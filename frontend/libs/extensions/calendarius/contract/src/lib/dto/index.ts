@@ -4,4 +4,4 @@ export * from './happening-types';
 export * from './calendarius';
 export * from './todo_move_funcs';
 export * from './weekday';
-export { IReminderDbo } from './reminder';
+export type { IReminderDbo } from './reminder';
