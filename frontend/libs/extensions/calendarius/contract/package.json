@@ -1,0 +1,18 @@
+{
+  "name": "@sneat/extension-calendarius-contract",
+  "version": "0.22.2",
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@angular/common": ">=21.0.0",
+    "@angular/core": ">=21.0.0",
+    "@sneat/core": "^0.22.0",
+    "@sneat/dto": "^0.22.0",
+    "@sneat/space-models": "^0.22.0"
+  },
+  "dependencies": {
+    "tslib": "2.8.1"
+  },
+  "sideEffects": false
+}

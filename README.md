@@ -19,6 +19,8 @@ types directly.
   - `facade4calendarius` — `HappeningsFacade`, the interface consumers depend on;
     the host (`sneat-go`) implements it once over the calendarius implementation
     facade and injects it into consuming extensions
+- `frontend/` — Nx workspace whose `ext-calendarius-contract` project publishes
+  `@sneat/extension-calendarius-contract`. This repository is its sole source.
 
 ## Migration plan (grow-as-touched, no big bang)
 
@@ -30,6 +32,5 @@ types directly.
 3. Extract further shared DTOs from `calendarius/backend/dto4calendarius` here
    as second consumers appear (`dbo4calendarius` storage types stay private —
    see the standard's moves-vs-stays rule).
-4. Frontend: `@sneat/extension-calendarius-contract` is currently published from
-   `sneat-libs`; moving its source here is a coordinated pnpm/publish migration,
-   tracked separately.
+4. ✅ Move `@sneat/extension-calendarius-contract` from `sneat-libs` into this
+   repository. The implementation packages live in `calendarius/frontend`.

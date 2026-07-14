@@ -1,0 +1,45 @@
+{
+  "name": "@sneat/ext-calendarius-frontend",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "packageManager": "pnpm@11.0.9",
+  "scripts": {},
+  "dependencies": {
+    "@angular/core": "21.2.9",
+    "@sneat/core": "0.22.0",
+    "@sneat/dto": "0.22.0",
+    "@sneat/space-models": "0.22.0",
+    "tslib": "^2.8.1"
+  },
+  "devDependencies": {
+    "@analogjs/vite-plugin-angular": "2.2.0",
+    "@analogjs/vitest-angular": "2.2.0",
+    "@angular/build": "21.2.7",
+    "@angular/compiler": "21.2.9",
+    "@angular/compiler-cli": "21.2.9",
+    "@eslint/js": "^9.8.0",
+    "@nx/angular": "22.7.5",
+    "@nx/eslint": "22.7.5",
+    "@nx/eslint-plugin": "22.7.5",
+    "@nx/vite": "22.7.5",
+    "@nx/vitest": "22.7.5",
+    "@typescript-eslint/utils": "^8.40.0",
+    "@vitest/coverage-v8": "4.0.9",
+    "@vitest/ui": "4.0.9",
+    "angular-eslint": "21.3.1",
+    "eslint": "^9.8.0",
+    "eslint-config-prettier": "^10.0.0",
+    "jsonc-eslint-parser": "^2.1.0",
+    "ng-packagr": "~21.2.0",
+    "nx": "22.7.5",
+    "typescript": "~5.9.2",
+    "typescript-eslint": "^8.40.0",
+    "vite": "^7.3.2",
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "4.0.9"
+  },
+  "nx": {
+    "includedScripts": []
+  }
+}

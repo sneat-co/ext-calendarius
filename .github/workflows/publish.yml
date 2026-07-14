@@ -1,0 +1,25 @@
+name: Publish contract
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref (branch or tag) to publish from (default - the default branch)
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    uses: sneat-co/cicd/.github/workflows/npm-publish.yml@main
+    with:
+      working-directory: frontend
+      ref: ${{ inputs.ref }}
+      install-command: pnpm install --no-frozen-lockfile --ignore-scripts
+      build-command: pnpm exec nx build ext-calendarius-contract
+      publish-command: pnpm exec nx release --yes && git push --follow-tags
+    secrets: inherit

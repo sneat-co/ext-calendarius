@@ -1,0 +1,49 @@
+{
+  "name": "ext-calendarius-contract",
+  "$schema": "../../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "release": {
+    "version": {
+      "manifestRootsToUpdate": ["dist/{projectRoot}"],
+      "currentVersionResolver": "git-tag",
+      "fallbackCurrentVersionResolver": "disk"
+    }
+  },
+  "sourceRoot": "libs/extensions/calendarius/contract/src",
+  "prefix": "sneat",
+  "targets": {
+    "build": {
+      "executor": "@nx/angular:package",
+      "outputs": [
+        "{workspaceRoot}/dist/libs/extensions/calendarius/contract"
+      ],
+      "options": {
+        "project": "libs/extensions/calendarius/contract/ng-package.json",
+        "tsConfig": "libs/extensions/calendarius/contract/tsconfig.lib.json"
+      },
+      "configurations": {
+        "production": {
+          "tsConfig": "libs/extensions/calendarius/contract/tsconfig.lib.prod.json"
+        },
+        "development": {}
+      },
+      "defaultConfiguration": "production"
+    },
+    "test": {
+      "executor": "@nx/vitest:test",
+      "outputs": [
+        "{workspaceRoot}/coverage/libs/extensions/calendarius/contract"
+      ],
+      "options": {
+        "tsConfig": "libs/extensions/calendarius/contract/tsconfig.spec.json"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  },
+  "tags": [
+    "layer:contract",
+    "domain:calendarius"
+  ]
+}
