@@ -29,6 +29,12 @@
       },
       "defaultConfiguration": "production"
     },
+    "nx-release-publish": {
+      "options": {
+        "packageRoot": "dist/{projectRoot}",
+        "access": "public"
+      }
+    },
     "test": {
       "executor": "@nx/vitest:test",
       "outputs": [
