@@ -1,3 +1,14 @@
+## 0.22.4 (2026-07-14)
+
+### 🩹 Fixes
+
+- publish Calendarius partial Angular compilation ([0c14da6](https://github.com/sneat-co/ext-calendarius/commit/0c14da6))
+- **ci:** publish Calendarius build output ([e15fb46](https://github.com/sneat-co/ext-calendarius/commit/e15fb46))
+
+### ❤️ Thank You
+
+- Alexander Trakhimenok
+
 ## 0.22.3 (2026-07-14)
 
 ### 🚀 Features
