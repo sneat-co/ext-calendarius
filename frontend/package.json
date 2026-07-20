@@ -17,7 +17,7 @@
     "@analogjs/vitest-angular": "2.2.0",
     "@angular/build": "21.2.7",
     "@angular/compiler": "21.2.9",
-    "@angular/compiler-cli": "21.2.9",
+    "@angular/compiler-cli": "21.2.18",
     "@eslint/js": "^9.8.0",
     "@nx/angular": "22.7.5",
     "@nx/eslint": "22.7.5",
