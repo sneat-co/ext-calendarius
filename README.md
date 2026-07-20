@@ -15,10 +15,11 @@ types directly.
 ## Contents
 
 - `backend/` — Go module `github.com/sneat-co/ext-calendarius/backend`
-  - `calendariusmodels` — shared vocabulary: `HappeningSpec`, `HappeningBrief`
-  - `facade4calendarius` — `HappeningsFacade`, the interface consumers depend on;
-    the host (`sneat-go`) implements it once over the calendarius implementation
-    facade and injects it into consuming extensions
+  - `calendariusmodels` — shared vocabulary: `HappeningSpec`,
+    `HappeningBrief`, `RecurringHappening`, and `Occurrence`
+  - `facade4calendarius` — `HappeningsFacade` and
+    `RecurringHappeningsFacade`, the interfaces consumers depend on; the host
+    injects implementations from Calendarius
 - `frontend/` — Nx workspace whose `ext-calendarius-contract` project publishes
   `@sneat/extension-calendarius-contract`. This repository is its sole source.
 
@@ -34,3 +35,5 @@ types directly.
    see the standard's moves-vs-stays rule).
 4. ✅ Move `@sneat/extension-calendarius-contract` from `sneat-libs` into this
    repository. The implementation packages live in `calendarius/frontend`.
+5. ✅ Add recurring-happening projection, extension-data, and occurrence
+   expansion contracts so Togethered no longer imports Calendarius DBOs.
