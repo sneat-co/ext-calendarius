@@ -1,0 +1,38 @@
+name: Contract CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+      - name: Reject implementation dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          violations="$(git grep -nE '"github\.com/(sneat-co/(sneat-go|sneat-bots|[^" ]+/backend)|dal-go/)' -- ':(glob)backend/**/*.go' || true)"
+          violations="$(printf '%s\n' "$violations" | grep -v '"github\.com/sneat-co/ext-calendarius/backend/' || true)"
+          if [ -n "$violations" ]; then
+            printf '%s\n' "$violations" >&2
+            echo 'ext-calendarius is a contract module and may not import implementations, hosts, or DAL packages.' >&2
+            exit 1
+          fi
+      - name: Test the contract coverage floor
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./... -coverprofile=coverage.out
+          coverage="$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}' | tr -d '%')"
+          floor="$(tr -d '[:space:]' < coverage_floor.txt)"
+          awk -v coverage="$coverage" -v floor="$floor" 'BEGIN { exit !(coverage >= floor) }' || {
+            echo "coverage ${coverage}% is below floor ${floor}%" >&2
+            exit 1
+          }
