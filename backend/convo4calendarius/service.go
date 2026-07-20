@@ -31,6 +31,14 @@ type CreateEventRequest struct {
 	ParticipantIDs  []string
 }
 
+// Valid reports whether a conversational request contains the minimum data an
+// implementation needs to create a timed event. It keeps controller-side
+// validation on the contract while implementations retain authorization and
+// persistence responsibilities.
+func (request CreateEventRequest) Valid() bool {
+	return request.SpaceID != "" && request.Title != "" && request.Date != "" && request.Time != "" && request.DurationMinutes > 0
+}
+
 // Service is the Calendarius application port for conversational clients.
 // Implementations own authorization, contact resolution, and persistence.
 type Service interface {
