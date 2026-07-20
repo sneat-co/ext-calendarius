@@ -17,7 +17,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if git grep -nE '"github\.com/(sneat-co/(sneat-go|sneat-bots|[^" ]+/backend)|dal-go/)' -- ':(glob)backend/**/*.go'; then
+          violations="$(git grep -nE '"github\.com/(sneat-co/(sneat-go|sneat-bots|[^" ]+/backend)|dal-go/)' -- ':(glob)backend/**/*.go' || true)"
+          violations="$(printf '%s\n' "$violations" | grep -v '"github\.com/sneat-co/ext-calendarius/backend/' || true)"
+          if [ -n "$violations" ]; then
+            printf '%s\n' "$violations" >&2
             echo 'ext-calendarius is a contract module and may not import implementations, hosts, or DAL packages.' >&2
             exit 1
           fi
