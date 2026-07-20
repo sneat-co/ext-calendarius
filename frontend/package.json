@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "license": "MIT",
   "private": true,
-  "packageManager": "pnpm@11.0.9",
+  "packageManager": "pnpm@11.15.0",
   "scripts": {},
   "dependencies": {
     "@angular/core": "21.2.9",
