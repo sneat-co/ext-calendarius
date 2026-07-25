@@ -1,4 +1,4 @@
-package convo4calendarius
+package convo4calendariustest
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/sneat-co/ext-calendarius/backend/convo4calendarius"
 )
 
 // referenceService is a minimal, deliberately correct implementation of
@@ -15,13 +17,13 @@ import (
 // so the suite's own assertions run against a known-good subject here, not
 // just against downstream repos where this module can't run its tests.
 type referenceService struct {
-	contacts []Contact
+	contacts []convo4calendarius.Contact
 }
 
-func (s referenceService) ResolveContacts(_ context.Context, _ string, names []string) ([]Contact, error) {
-	resolved := make([]Contact, 0, len(names))
+func (s referenceService) ResolveContacts(_ context.Context, _ string, names []string) ([]convo4calendarius.Contact, error) {
+	resolved := make([]convo4calendarius.Contact, 0, len(names))
 	for _, name := range names {
-		var matches []Contact
+		var matches []convo4calendarius.Contact
 		for _, contact := range s.contacts {
 			if contact.DisplayName == "" || !strings.Contains(strings.ToLower(contact.DisplayName), strings.ToLower(name)) {
 				continue
@@ -35,11 +37,11 @@ func (s referenceService) ResolveContacts(_ context.Context, _ string, names []s
 	return resolved, nil
 }
 
-func (s referenceService) CreateEvent(context.Context, CreateEventRequest) (Event, error) {
-	return Event{}, nil
+func (s referenceService) CreateEvent(context.Context, convo4calendarius.CreateEventRequest) (convo4calendarius.Event, error) {
+	return convo4calendarius.Event{}, nil
 }
 
-func (s referenceService) ListEvents(context.Context, string) ([]Event, error) {
+func (s referenceService) ListEvents(context.Context, string) ([]convo4calendarius.Event, error) {
 	return nil, nil
 }
 
@@ -48,7 +50,7 @@ func (s referenceService) DeleteEvent(context.Context, string, string, string) e
 }
 
 func TestRunServiceConformanceAgainstReferenceImplementation(t *testing.T) {
-	RunServiceConformance(t, func(t *testing.T, contacts []Contact) Service {
+	RunServiceConformance(t, func(t *testing.T, contacts []convo4calendarius.Contact) convo4calendarius.Service {
 		t.Helper()
 		return referenceService{contacts: contacts}
 	})
@@ -62,11 +64,11 @@ func TestRunServiceConformanceAgainstReferenceImplementation(t *testing.T) {
 // suite exists to prevent: a fake (or, here, an implementation) that looks
 // fine because nothing ever exercises its wrong path.
 type brokenService struct {
-	contacts []Contact
+	contacts []convo4calendarius.Contact
 }
 
-func (s brokenService) ResolveContacts(_ context.Context, _ string, names []string) ([]Contact, error) {
-	resolved := make([]Contact, 0, len(names))
+func (s brokenService) ResolveContacts(_ context.Context, _ string, names []string) ([]convo4calendarius.Contact, error) {
+	resolved := make([]convo4calendarius.Contact, 0, len(names))
 	for _, name := range names {
 		for _, contact := range s.contacts {
 			if contact.DisplayName == "" || !strings.Contains(strings.ToLower(contact.DisplayName), strings.ToLower(name)) {
@@ -79,11 +81,11 @@ func (s brokenService) ResolveContacts(_ context.Context, _ string, names []stri
 	return resolved, nil
 }
 
-func (s brokenService) CreateEvent(context.Context, CreateEventRequest) (Event, error) {
-	return Event{}, nil
+func (s brokenService) CreateEvent(context.Context, convo4calendarius.CreateEventRequest) (convo4calendarius.Event, error) {
+	return convo4calendarius.Event{}, nil
 }
 
-func (s brokenService) ListEvents(context.Context, string) ([]Event, error) {
+func (s brokenService) ListEvents(context.Context, string) ([]convo4calendarius.Event, error) {
 	return nil, nil
 }
 
@@ -123,7 +125,9 @@ func TestRunServiceConformanceRejectsABrokenImplementation(t *testing.T) {
 	}
 
 	recorder := &recordingT{}
-	ambiguity.run(recorder, func(contacts []Contact) Service { return brokenService{contacts: contacts} })
+	ambiguity.run(recorder, func(contacts []convo4calendarius.Contact) convo4calendarius.Service {
+		return brokenService{contacts: contacts}
+	})
 	if len(recorder.failures) == 0 {
 		t.Fatal("the suite passed an implementation that guesses at ambiguous names; it must reject it")
 	}
@@ -141,7 +145,9 @@ func TestRunServiceConformanceRejectsABrokenImplementation(t *testing.T) {
 			continue // both depend on the ambiguity rule
 		}
 		other := &recordingT{}
-		check.run(other, func(contacts []Contact) Service { return brokenService{contacts: contacts} })
+		check.run(other, func(contacts []convo4calendarius.Contact) convo4calendarius.Service {
+			return brokenService{contacts: contacts}
+		})
 		if len(other.failures) != 0 {
 			t.Errorf("check %s failed for an unrelated reason: %v", check.name, other.failures)
 		}
@@ -153,7 +159,9 @@ func TestRunServiceConformanceRejectsABrokenImplementation(t *testing.T) {
 func TestEveryCheckPassesAgainstTheReferenceImplementation(t *testing.T) {
 	for _, check := range serviceConformanceChecks {
 		recorder := &recordingT{}
-		check.run(recorder, func(contacts []Contact) Service { return referenceService{contacts: contacts} })
+		check.run(recorder, func(contacts []convo4calendarius.Contact) convo4calendarius.Service {
+			return referenceService{contacts: contacts}
+		})
 		if len(recorder.failures) != 0 {
 			t.Errorf("check %s failed against the reference implementation: %v", check.name, recorder.failures)
 		}
@@ -163,17 +171,19 @@ func TestEveryCheckPassesAgainstTheReferenceImplementation(t *testing.T) {
 // funcService lets a test express one deliberately-broken ResolveContacts
 // inline.
 type funcService struct {
-	resolve func(names []string) ([]Contact, error)
+	resolve func(names []string) ([]convo4calendarius.Contact, error)
 }
 
-func (s funcService) ResolveContacts(_ context.Context, _ string, names []string) ([]Contact, error) {
+func (s funcService) ResolveContacts(_ context.Context, _ string, names []string) ([]convo4calendarius.Contact, error) {
 	return s.resolve(names)
 }
 
-func (s funcService) CreateEvent(context.Context, CreateEventRequest) (Event, error) {
-	return Event{}, nil
+func (s funcService) CreateEvent(context.Context, convo4calendarius.CreateEventRequest) (convo4calendarius.Event, error) {
+	return convo4calendarius.Event{}, nil
 }
-func (s funcService) ListEvents(context.Context, string) ([]Event, error) { return nil, nil }
+func (s funcService) ListEvents(context.Context, string) ([]convo4calendarius.Event, error) {
+	return nil, nil
+}
 func (s funcService) DeleteEvent(context.Context, string, string, string) error {
 	return nil
 }
@@ -184,47 +194,47 @@ func (s funcService) DeleteEvent(context.Context, string, string, string) error 
 // bug in the first place. Each case also pins WHICH check is supposed to catch
 // which violation, so a rule cannot quietly migrate between checks.
 func TestEveryCheckRejectsAViolationOfItsOwnRule(t *testing.T) {
-	all := func(contacts []Contact) []Contact { return contacts }
+	all := func(contacts []convo4calendarius.Contact) []convo4calendarius.Contact { return contacts }
 
 	for _, tt := range []struct {
 		check   string
-		broken  func(contacts []Contact) Service
+		broken  func(contacts []convo4calendarius.Contact) convo4calendarius.Service
 		because string
 	}{
 		{"UnambiguousNameResolves",
-			func(contacts []Contact) Service {
-				return funcService{resolve: func([]string) ([]Contact, error) { return nil, errBroken }}
+			func(contacts []convo4calendarius.Contact) convo4calendarius.Service {
+				return funcService{resolve: func([]string) ([]convo4calendarius.Contact, error) { return nil, errBroken }}
 			},
 			"a resolvable name must not error"},
 		{"UnambiguousNameResolves",
-			func(contacts []Contact) Service {
-				return funcService{resolve: func([]string) ([]Contact, error) { return all(contacts), nil }}
+			func(contacts []convo4calendarius.Contact) convo4calendarius.Service {
+				return funcService{resolve: func([]string) ([]convo4calendarius.Contact, error) { return all(contacts), nil }}
 			},
 			"resolving to the wrong contact must be caught"},
 		{"AmbiguousNameIsOmittedWithNilError",
-			func(contacts []Contact) Service {
-				return funcService{resolve: func([]string) ([]Contact, error) { return nil, errBroken }}
+			func(contacts []convo4calendarius.Contact) convo4calendarius.Service {
+				return funcService{resolve: func([]string) ([]convo4calendarius.Contact, error) { return nil, errBroken }}
 			},
 			"an ambiguous name must be omitted, not turned into an error"},
 		{"UnknownNameIsOmittedWithNilError",
-			func(contacts []Contact) Service {
-				return funcService{resolve: func([]string) ([]Contact, error) { return nil, errBroken }}
+			func(contacts []convo4calendarius.Contact) convo4calendarius.Service {
+				return funcService{resolve: func([]string) ([]convo4calendarius.Contact, error) { return nil, errBroken }}
 			},
 			"an unknown name must be omitted, not turned into an error"},
 		{"UnknownNameIsOmittedWithNilError",
-			func(contacts []Contact) Service {
-				return funcService{resolve: func([]string) ([]Contact, error) { return all(contacts), nil }}
+			func(contacts []convo4calendarius.Contact) convo4calendarius.Service {
+				return funcService{resolve: func([]string) ([]convo4calendarius.Contact, error) { return all(contacts), nil }}
 			},
 			"an unknown name must resolve to nothing"},
 		{"CountMismatchIsHowACallerDetectsAProblem",
-			func(contacts []Contact) Service {
-				return funcService{resolve: func([]string) ([]Contact, error) { return nil, errBroken }}
+			func(contacts []convo4calendarius.Contact) convo4calendarius.Service {
+				return funcService{resolve: func([]string) ([]convo4calendarius.Contact, error) { return nil, errBroken }}
 			},
 			"a partly-resolvable request must not error"},
 		{"CountMismatchIsHowACallerDetectsAProblem",
-			func(contacts []Contact) Service {
-				return funcService{resolve: func(names []string) ([]Contact, error) {
-					resolved := make([]Contact, 0, len(names))
+			func(contacts []convo4calendarius.Contact) convo4calendarius.Service {
+				return funcService{resolve: func(names []string) ([]convo4calendarius.Contact, error) {
+					resolved := make([]convo4calendarius.Contact, 0, len(names))
 					for range names {
 						resolved = append(resolved, contacts[0])
 					}
@@ -233,17 +243,37 @@ func TestEveryCheckRejectsAViolationOfItsOwnRule(t *testing.T) {
 			},
 			"resolving every name when two cannot resolve must be caught"},
 		{"CountMismatchIsHowACallerDetectsAProblem",
-			func(contacts []Contact) Service {
-				return funcService{resolve: func([]string) ([]Contact, error) { return contacts[2:3], nil }}
+			func(contacts []convo4calendarius.Contact) convo4calendarius.Service {
+				return funcService{resolve: func([]string) ([]convo4calendarius.Contact, error) { return contacts[2:3], nil }}
 			},
-			"losing request order must be caught"},
+			"resolving too few must be caught"},
+		// The RIGHT contacts in the WRONG order: the count matches, so only the
+		// identity/order comparison can catch this. Without a case like it, that
+		// comparison could be deleted and every test here would still pass — which
+		// is precisely the "looks green, asserts nothing" trap this suite exists
+		// to prevent.
+		{"CountMismatchIsHowACallerDetectsAProblem",
+			func(contacts []convo4calendarius.Contact) convo4calendarius.Service {
+				return funcService{resolve: func([]string) ([]convo4calendarius.Contact, error) {
+					return []convo4calendarius.Contact{contacts[3], contacts[2]}, nil
+				}}
+			},
+			"returning the right contacts in the wrong order must be caught"},
+		// Right COUNT, wrong CONTACT — reachable only by the identity comparison.
+		{"UnambiguousNameResolves",
+			func(contacts []convo4calendarius.Contact) convo4calendarius.Service {
+				return funcService{resolve: func([]string) ([]convo4calendarius.Contact, error) {
+					return []convo4calendarius.Contact{contacts[0]}, nil // Sarah Connor, not Bob Marley
+				}}
+			},
+			"resolving to one wrong contact must be caught"},
 		{"MatchingIsCaseInsensitiveSubstring",
-			func(contacts []Contact) Service {
-				return funcService{resolve: func(names []string) ([]Contact, error) {
+			func(contacts []convo4calendarius.Contact) convo4calendarius.Service {
+				return funcService{resolve: func(names []string) ([]convo4calendarius.Contact, error) {
 					// Exact-match only: rejects "bob", "MARLEY" and "b Mar".
 					for _, contact := range contacts {
 						if len(names) == 1 && contact.DisplayName == names[0] {
-							return []Contact{contact}, nil
+							return []convo4calendarius.Contact{contact}, nil
 						}
 					}
 					return nil, nil

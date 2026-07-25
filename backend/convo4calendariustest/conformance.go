@@ -1,8 +1,16 @@
-package convo4calendarius
+// Package convo4calendariustest holds the conformance suite for the
+// convo4calendarius.Service contract.
+//
+// It is a SEPARATE package so that importing the contract itself does not drag
+// Go's testing package into a production binary — the same reason dalgo keeps
+// its conformance kit in branchingtest rather than in dal.
+package convo4calendariustest
 
 import (
 	"context"
 	"testing"
+
+	"github.com/sneat-co/ext-calendarius/backend/convo4calendarius"
 )
 
 // RunServiceConformance asserts the behaviour every Service implementation —
@@ -23,12 +31,12 @@ import (
 // Service wrapper that supplies it internally — what a context must carry is
 // not part of this contract, so the suite deliberately stays agnostic about
 // it and only exercises the documented ResolveContacts behaviour.
-func RunServiceConformance(t *testing.T, newService func(t *testing.T, contacts []Contact) Service) {
+func RunServiceConformance(t *testing.T, newService func(t *testing.T, contacts []convo4calendarius.Contact) convo4calendarius.Service) {
 	t.Helper()
 	for _, check := range serviceConformanceChecks {
 		t.Run(check.name, func(t *testing.T) {
 			t.Helper()
-			check.run(t, func(contacts []Contact) Service { return newService(t, contacts) })
+			check.run(t, func(contacts []convo4calendarius.Contact) convo4calendarius.Service { return newService(t, contacts) })
 		})
 	}
 }
@@ -54,7 +62,7 @@ type conformanceT interface {
 // serviceConformanceCheck is one named contract obligation.
 type serviceConformanceCheck struct {
 	name string
-	run  func(t conformanceT, newService func(contacts []Contact) Service)
+	run  func(t conformanceT, newService func(contacts []convo4calendarius.Contact) convo4calendarius.Service)
 }
 
 var serviceConformanceChecks = []serviceConformanceCheck{
@@ -65,9 +73,9 @@ var serviceConformanceChecks = []serviceConformanceCheck{
 	{"MatchingIsCaseInsensitiveSubstring", checkMatchingIsCaseInsensitiveSubstring},
 }
 
-func checkUnambiguousNameResolves(t conformanceT, newService func(contacts []Contact) Service) {
+func checkUnambiguousNameResolves(t conformanceT, newService func(contacts []convo4calendarius.Contact) convo4calendarius.Service) {
 	t.Helper()
-	service := newService([]Contact{
+	service := newService([]convo4calendarius.Contact{
 		{ID: "c1", DisplayName: "Sarah Connor"},
 		{ID: "c2", DisplayName: "Bob Marley"},
 	})
@@ -87,9 +95,9 @@ func checkUnambiguousNameResolves(t conformanceT, newService func(contacts []Con
 // person to a meeting — a mistake nobody would notice until the event. The
 // documented contract is: omit it, and return a nil error, not a clarification
 // raised by the service itself.
-func checkAmbiguousNameIsOmitted(t conformanceT, newService func(contacts []Contact) Service) {
+func checkAmbiguousNameIsOmitted(t conformanceT, newService func(contacts []convo4calendarius.Contact) convo4calendarius.Service) {
 	t.Helper()
-	service := newService([]Contact{
+	service := newService([]convo4calendarius.Contact{
 		{ID: "c1", DisplayName: "Sarah Connor"},
 		{ID: "c2", DisplayName: "Sarah Miles"},
 	})
@@ -104,9 +112,9 @@ func checkAmbiguousNameIsOmitted(t conformanceT, newService func(contacts []Cont
 	}
 }
 
-func checkUnknownNameIsOmitted(t conformanceT, newService func(contacts []Contact) Service) {
+func checkUnknownNameIsOmitted(t conformanceT, newService func(contacts []convo4calendarius.Contact) convo4calendarius.Service) {
 	t.Helper()
-	service := newService([]Contact{{ID: "c1", DisplayName: "Sarah Connor"}})
+	service := newService([]convo4calendarius.Contact{{ID: "c1", DisplayName: "Sarah Connor"}})
 
 	resolved, err := service.ResolveContacts(context.Background(), "space1", []string{"Nobody"})
 	if err != nil {
@@ -122,9 +130,9 @@ func checkUnknownNameIsOmitted(t conformanceT, newService func(contacts []Contac
 // of omission over an error. A caller detects the problem only by noticing the
 // count shrank, so resolved names must keep the request's order for that
 // comparison to mean anything.
-func checkCountMismatchIsDetectable(t conformanceT, newService func(contacts []Contact) Service) {
+func checkCountMismatchIsDetectable(t conformanceT, newService func(contacts []convo4calendarius.Contact) convo4calendarius.Service) {
 	t.Helper()
-	service := newService([]Contact{
+	service := newService([]convo4calendarius.Contact{
 		{ID: "c1", DisplayName: "Sarah Connor"},
 		{ID: "c2", DisplayName: "Sarah Miles"},
 		{ID: "c3", DisplayName: "Bob Marley"},
@@ -151,9 +159,9 @@ func checkCountMismatchIsDetectable(t conformanceT, newService func(contacts []C
 // convoservice4calendarius documents matching as a case-insensitive substring
 // of the contact's display name — not an exact or prefix match. Assert exactly
 // that rule, no stricter.
-func checkMatchingIsCaseInsensitiveSubstring(t conformanceT, newService func(contacts []Contact) Service) {
+func checkMatchingIsCaseInsensitiveSubstring(t conformanceT, newService func(contacts []convo4calendarius.Contact) convo4calendarius.Service) {
 	t.Helper()
-	service := newService([]Contact{{ID: "c1", DisplayName: "Bob Marley"}})
+	service := newService([]convo4calendarius.Contact{{ID: "c1", DisplayName: "Bob Marley"}})
 
 	for _, name := range []string{"bob", "MARLEY", "b Mar"} {
 		resolved, err := service.ResolveContacts(context.Background(), "space1", []string{name})
