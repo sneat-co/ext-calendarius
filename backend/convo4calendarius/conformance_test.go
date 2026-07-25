@@ -2,8 +2,8 @@ package convo4calendarius
 
 import (
 	"context"
-	"os"
-	"os/exec"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -91,26 +91,181 @@ func (s brokenService) DeleteEvent(context.Context, string, string, string) erro
 	return nil
 }
 
-// TestRunServiceConformanceRejectsABrokenImplementation runs the suite, in a
-// child process, against brokenService. It must FAIL — that is what proves
-// the suite has teeth. The assertion runs out-of-process specifically so
-// that expected failure does not fail this module's own `go test ./...`.
+// recordingT captures what a check reports instead of failing this test, so
+// the suite can be run against a deliberately broken implementation IN-PROCESS.
+type recordingT struct{ failures []string }
+
+func (r *recordingT) Helper() {}
+
+func (r *recordingT) Errorf(format string, args ...any) {
+	r.failures = append(r.failures, fmt.Sprintf(format, args...))
+}
+
+// TestRunServiceConformanceRejectsABrokenImplementation proves the suite has
+// TEETH: run against an implementation that guesses at ambiguous names, the
+// ambiguity check must report a failure. A suite that passes no matter what it
+// is run against catches nothing — which is precisely the failure mode this
+// package exists to prevent.
+//
+// Run in-process against a recording stand-in rather than by re-executing the
+// test binary, so every assertion branch in conformance.go is actually
+// exercised and measured rather than sitting at zero coverage in a child
+// process the profiler never sees.
 func TestRunServiceConformanceRejectsABrokenImplementation(t *testing.T) {
-	if os.Getenv("CONFORMANCE_SELFTEST_RUN_BROKEN") == "1" {
-		RunServiceConformance(t, func(t *testing.T, contacts []Contact) Service {
-			t.Helper()
-			return brokenService{contacts: contacts}
-		})
-		return
+	var ambiguity serviceConformanceCheck
+	for _, check := range serviceConformanceChecks {
+		if check.name == "AmbiguousNameIsOmittedWithNilError" {
+			ambiguity = check
+		}
+	}
+	if ambiguity.run == nil {
+		t.Fatal("the ambiguity check is missing from the suite")
 	}
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestRunServiceConformanceRejectsABrokenImplementation") //nolint:gosec // fixed argv, test-only re-exec of the current test binary
-	cmd.Env = append(os.Environ(), "CONFORMANCE_SELFTEST_RUN_BROKEN=1")
-	output, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Fatalf("RunServiceConformance passed against an implementation that guesses at ambiguous names; it should have failed:\n%s", output)
+	recorder := &recordingT{}
+	ambiguity.run(recorder, func(contacts []Contact) Service { return brokenService{contacts: contacts} })
+	if len(recorder.failures) == 0 {
+		t.Fatal("the suite passed an implementation that guesses at ambiguous names; it must reject it")
 	}
-	if !strings.Contains(string(output), "AmbiguousNameIsOmittedWithNilError") {
-		t.Fatalf("expected the ambiguous-name subtest to be the one that failed, got:\n%s", output)
+	// The broken service GUESSES rather than erroring, so it trips the
+	// "want none" branch — naming which contact it wrongly picked.
+	if !strings.Contains(recorder.failures[0], "want none") {
+		t.Errorf("failure = %q, want it to report that an ambiguous name must resolve to nothing", recorder.failures[0])
+	}
+
+	// Every other check must still PASS against the broken service, so a
+	// failure here is attributable to the ambiguity rule rather than to the
+	// implementation being broken in some incidental way.
+	for _, check := range serviceConformanceChecks {
+		if check.name == ambiguity.name || check.name == "CountMismatchIsHowACallerDetectsAProblem" {
+			continue // both depend on the ambiguity rule
+		}
+		other := &recordingT{}
+		check.run(other, func(contacts []Contact) Service { return brokenService{contacts: contacts} })
+		if len(other.failures) != 0 {
+			t.Errorf("check %s failed for an unrelated reason: %v", check.name, other.failures)
+		}
 	}
 }
+
+// Every check must pass against a correct implementation — otherwise a green
+// downstream run would prove nothing.
+func TestEveryCheckPassesAgainstTheReferenceImplementation(t *testing.T) {
+	for _, check := range serviceConformanceChecks {
+		recorder := &recordingT{}
+		check.run(recorder, func(contacts []Contact) Service { return referenceService{contacts: contacts} })
+		if len(recorder.failures) != 0 {
+			t.Errorf("check %s failed against the reference implementation: %v", check.name, recorder.failures)
+		}
+	}
+}
+
+// funcService lets a test express one deliberately-broken ResolveContacts
+// inline.
+type funcService struct {
+	resolve func(names []string) ([]Contact, error)
+}
+
+func (s funcService) ResolveContacts(_ context.Context, _ string, names []string) ([]Contact, error) {
+	return s.resolve(names)
+}
+
+func (s funcService) CreateEvent(context.Context, CreateEventRequest) (Event, error) {
+	return Event{}, nil
+}
+func (s funcService) ListEvents(context.Context, string) ([]Event, error) { return nil, nil }
+func (s funcService) DeleteEvent(context.Context, string, string, string) error {
+	return nil
+}
+
+// Every check must REJECT an implementation that breaks the specific rule it
+// owns. Without this, a check could assert nothing and the suite would still
+// look green — the same "always passes" trap that let a kinder fake hide a real
+// bug in the first place. Each case also pins WHICH check is supposed to catch
+// which violation, so a rule cannot quietly migrate between checks.
+func TestEveryCheckRejectsAViolationOfItsOwnRule(t *testing.T) {
+	all := func(contacts []Contact) []Contact { return contacts }
+
+	for _, tt := range []struct {
+		check   string
+		broken  func(contacts []Contact) Service
+		because string
+	}{
+		{"UnambiguousNameResolves",
+			func(contacts []Contact) Service {
+				return funcService{resolve: func([]string) ([]Contact, error) { return nil, errBroken }}
+			},
+			"a resolvable name must not error"},
+		{"UnambiguousNameResolves",
+			func(contacts []Contact) Service {
+				return funcService{resolve: func([]string) ([]Contact, error) { return all(contacts), nil }}
+			},
+			"resolving to the wrong contact must be caught"},
+		{"AmbiguousNameIsOmittedWithNilError",
+			func(contacts []Contact) Service {
+				return funcService{resolve: func([]string) ([]Contact, error) { return nil, errBroken }}
+			},
+			"an ambiguous name must be omitted, not turned into an error"},
+		{"UnknownNameIsOmittedWithNilError",
+			func(contacts []Contact) Service {
+				return funcService{resolve: func([]string) ([]Contact, error) { return nil, errBroken }}
+			},
+			"an unknown name must be omitted, not turned into an error"},
+		{"UnknownNameIsOmittedWithNilError",
+			func(contacts []Contact) Service {
+				return funcService{resolve: func([]string) ([]Contact, error) { return all(contacts), nil }}
+			},
+			"an unknown name must resolve to nothing"},
+		{"CountMismatchIsHowACallerDetectsAProblem",
+			func(contacts []Contact) Service {
+				return funcService{resolve: func([]string) ([]Contact, error) { return nil, errBroken }}
+			},
+			"a partly-resolvable request must not error"},
+		{"CountMismatchIsHowACallerDetectsAProblem",
+			func(contacts []Contact) Service {
+				return funcService{resolve: func(names []string) ([]Contact, error) {
+					resolved := make([]Contact, 0, len(names))
+					for range names {
+						resolved = append(resolved, contacts[0])
+					}
+					return resolved, nil
+				}}
+			},
+			"resolving every name when two cannot resolve must be caught"},
+		{"CountMismatchIsHowACallerDetectsAProblem",
+			func(contacts []Contact) Service {
+				return funcService{resolve: func([]string) ([]Contact, error) { return contacts[2:3], nil }}
+			},
+			"losing request order must be caught"},
+		{"MatchingIsCaseInsensitiveSubstring",
+			func(contacts []Contact) Service {
+				return funcService{resolve: func(names []string) ([]Contact, error) {
+					// Exact-match only: rejects "bob", "MARLEY" and "b Mar".
+					for _, contact := range contacts {
+						if len(names) == 1 && contact.DisplayName == names[0] {
+							return []Contact{contact}, nil
+						}
+					}
+					return nil, nil
+				}}
+			},
+			"exact-only matching must be caught"},
+	} {
+		var check serviceConformanceCheck
+		for _, candidate := range serviceConformanceChecks {
+			if candidate.name == tt.check {
+				check = candidate
+			}
+		}
+		if check.run == nil {
+			t.Fatalf("no check named %q", tt.check)
+		}
+		recorder := &recordingT{}
+		check.run(recorder, tt.broken)
+		if len(recorder.failures) == 0 {
+			t.Errorf("%s passed a broken implementation — %s", tt.check, tt.because)
+		}
+	}
+}
+
+var errBroken = errors.New("broken implementation")
