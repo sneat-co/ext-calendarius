@@ -288,7 +288,7 @@ func RunEventHappeningsFacadeConformance(
 					Time:            "10:00",
 					Location:        "City Hall",
 					Description:     "A description",
-					DurationMinutes: ptr(60),
+					DurationMinutes: 60,
 				},
 			},
 		)
