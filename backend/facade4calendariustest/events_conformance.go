@@ -275,6 +275,69 @@ func RunEventHappeningsFacadeConformance(
 			t.Fatal("UpdateEventHappening() expected error for non-existent ID, got nil")
 		}
 	})
+
+	t.Run("UpdateWithAllOptionalFieldsAndUnchangedDisposition", func(t *testing.T) {
+		facade := newFacade(t)
+		created, err := facade.CreateEventHappening(
+			context.Background(), conformanceUserID, conformanceSpaceID,
+			calendariusmodels.CreateEventHappeningRequest{
+				RequestID: "create-for-full-update",
+				Spec: calendariusmodels.EventHappeningSpec{
+					Title:           "Full update event",
+					Date:            "2026-09-01",
+					Time:            "10:00",
+					Location:        "City Hall",
+					Description:     "A description",
+					DurationMinutes: ptr(60),
+				},
+			},
+		)
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		// Update all optional fields.
+		newTitle := "Renamed event"
+		newLocation := "New location"
+		newDesc := "Updated description"
+		newDuration := 90
+		updated, err := facade.UpdateEventHappening(
+			context.Background(), conformanceUserID, conformanceSpaceID, created.Event.ID,
+			calendariusmodels.UpdateEventHappeningRequest{
+				RequestID:       "update-all-fields",
+				Title:           &newTitle,
+				Date:            ptr("2026-09-15"),
+				Time:            ptr("14:00"),
+				Location:        &newLocation,
+				Description:     &newDesc,
+				DurationMinutes: &newDuration,
+			},
+		)
+		if err != nil {
+			t.Fatalf("update all fields: %v", err)
+		}
+		if updated.Disposition != calendariusmodels.EventHappeningChanged {
+			t.Fatalf("disposition = %q, want changed", updated.Disposition)
+		}
+		// Re-apply the same patch — must report unchanged.
+		sameUpdate, err := facade.UpdateEventHappening(
+			context.Background(), conformanceUserID, conformanceSpaceID, created.Event.ID,
+			calendariusmodels.UpdateEventHappeningRequest{
+				RequestID:       "update-same-again",
+				Title:           &newTitle,
+				Date:            ptr("2026-09-15"),
+				Time:            ptr("14:00"),
+				Location:        &newLocation,
+				Description:     &newDesc,
+				DurationMinutes: &newDuration,
+			},
+		)
+		if err != nil {
+			t.Fatalf("same update: %v", err)
+		}
+		if sameUpdate.Disposition != calendariusmodels.EventHappeningUnchanged {
+			t.Fatalf("same update disposition = %q, want unchanged", sameUpdate.Disposition)
+		}
+	})
 }
 
 func ptr[T any](value T) *T { return &value }
