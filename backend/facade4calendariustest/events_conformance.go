@@ -254,6 +254,27 @@ func RunEventHappeningsFacadeConformance(
 			t.Fatalf("conflicting update error = %v, want ErrRequestIDConflict", err)
 		}
 	})
+
+	t.Run("GetNonExistentEventReturnsError", func(t *testing.T) {
+		facade := newFacade(t)
+		_, err := facade.GetEventHappening(
+			context.Background(), conformanceUserID, conformanceSpaceID, "nonexistent-id",
+		)
+		if err == nil {
+			t.Fatal("GetEventHappening() expected error for non-existent ID, got nil")
+		}
+	})
+
+	t.Run("UpdateNonExistentEventReturnsError", func(t *testing.T) {
+		facade := newFacade(t)
+		_, err := facade.UpdateEventHappening(
+			context.Background(), conformanceUserID, conformanceSpaceID, "nonexistent-id",
+			calendariusmodels.UpdateEventHappeningRequest{RequestID: "update-nonexistent"},
+		)
+		if err == nil {
+			t.Fatal("UpdateEventHappening() expected error for non-existent ID, got nil")
+		}
+	})
 }
 
 func ptr[T any](value T) *T { return &value }
