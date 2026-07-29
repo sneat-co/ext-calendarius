@@ -36,3 +36,97 @@ type HappeningBrief struct {
 
 	Canceled bool
 }
+
+// EventHappeningSpec is the mutable, platform-neutral set of fields used to
+// create or replace a single Event happening. Date, time and location are
+// intentionally independent: an event can exist while its participants are
+// still deciding any of them.
+//
+// DurationMinutes is meaningful only when Time is populated. A zero duration
+// asks Calendarius to apply its default.
+type EventHappeningSpec struct {
+	Title           string
+	Date            string
+	Time            string
+	Location        string
+	Description     string
+	DurationMinutes int
+}
+
+// IsScheduled derives whether the spec has enough information to place the
+// event on a calendar. Scheduledness is deliberately not persisted as a
+// separate state that could drift from the planning fields.
+func (v EventHappeningSpec) IsScheduled() bool {
+	return v.Date != "" && v.Time != ""
+}
+
+// EventHappening is the public projection of a Calendarius happening whose
+// semantic kind is "event". Its ID is the canonical event identity; consumers
+// must not create a second event record with another ID.
+type EventHappening struct {
+	ID              string
+	Title           string
+	Date            string
+	Time            string
+	Location        string
+	Description     string
+	DurationMinutes int
+	Status          EventHappeningStatus
+	CreatedBy       string
+	CreatedAt       time.Time
+}
+
+// EventHappeningStatus is the canonical Calendarius lifecycle projected
+// without exposing persistence constants.
+type EventHappeningStatus string
+
+const (
+	EventHappeningStatusActive    EventHappeningStatus = "active"
+	EventHappeningStatusArchived  EventHappeningStatus = "archived"
+	EventHappeningStatusCancelled EventHappeningStatus = "cancelled"
+	EventHappeningStatusDeleted   EventHappeningStatus = "deleted"
+)
+
+// IsScheduled derives whether the event can be placed on a calendar.
+func (v EventHappening) IsScheduled() bool {
+	return v.Date != "" && v.Time != ""
+}
+
+// EventHappeningMutationDisposition describes what a mutation actually did.
+// It is returned to callers for deterministic rendering and observability.
+type EventHappeningMutationDisposition string
+
+const (
+	EventHappeningCreated   EventHappeningMutationDisposition = "created"
+	EventHappeningChanged   EventHappeningMutationDisposition = "changed"
+	EventHappeningUnchanged EventHappeningMutationDisposition = "unchanged"
+	EventHappeningReused    EventHappeningMutationDisposition = "reused"
+)
+
+// EventHappeningMutation is the result of an idempotent create or update.
+type EventHappeningMutation struct {
+	Event       EventHappening
+	Disposition EventHappeningMutationDisposition
+}
+
+// CreateEventHappeningRequest carries a caller-stable request ID and the full
+// initial event plan. Retrying the same request with the same payload reuses
+// the original happening. Reusing it with another payload fails closed.
+type CreateEventHappeningRequest struct {
+	RequestID string
+	Spec      EventHappeningSpec
+}
+
+// UpdateEventHappeningRequest is a transactional patch. Nil means "leave the
+// field unchanged"; a non-nil empty string clears an optional planning field.
+// Title may not be cleared. RequestID has the same idempotency semantics as on
+// create.
+type UpdateEventHappeningRequest struct {
+	RequestID       string
+	Title           *string
+	Date            *string
+	Time            *string
+	Location        *string
+	Description     *string
+	DurationMinutes *int
+}

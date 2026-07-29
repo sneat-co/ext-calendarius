@@ -1,6 +1,7 @@
 import {
   validateHappeningDto,
   validateSingleHappeningSlot,
+  validatePlannedEventSlot,
   validateRecurringHappeningSlot,
   IHappeningDbo,
   IHappeningSlot,
@@ -111,6 +112,42 @@ describe('happening validation', () => {
 
       expect(() => validateHappeningDto(dto)).not.toThrow();
     });
+
+    it('should accept a title-only single event while keeping other kinds strict', () => {
+      const event: IHappeningDbo = {
+        title: 'Picnic',
+        type: 'single',
+        status: 'active',
+        kind: 'event',
+      };
+      expect(() => validateHappeningDto(event)).not.toThrow();
+
+      const appointment: IHappeningDbo = {
+        ...event,
+        kind: 'appointment',
+      };
+      expect(() => validateHappeningDto(appointment)).toThrow(
+        '!dto.slots?.length',
+      );
+    });
+
+    it.each([
+      ['date', { repeats: 'once', start: { date: '2026-08-01' } }],
+      ['time', { repeats: 'once', start: { time: '18:30' } }],
+      [
+        'location',
+        { repeats: 'once', location: { title: 'Phoenix Park' } },
+      ],
+    ])('should accept an event planned with %s only', (_name, slot) => {
+      const dto: IHappeningDbo = {
+        title: 'Picnic',
+        type: 'single',
+        status: 'active',
+        kind: 'event',
+        slots: { event: slot as IHappeningSlot },
+      };
+      expect(() => validateHappeningDto(dto)).not.toThrow();
+    });
   });
 
   describe('validateSingleHappeningSlot', () => {
@@ -212,6 +249,23 @@ describe('happening validation', () => {
       };
 
       expect(() => validateRecurringHappeningSlot('slot1', slot)).not.toThrow();
+    });
+  });
+
+  describe('validatePlannedEventSlot', () => {
+    it('rejects an empty placeholder slot', () => {
+      expect(() =>
+        validatePlannedEventSlot('event', { repeats: 'once' }),
+      ).toThrow('planned event slot has no planning data');
+    });
+
+    it('rejects an end without a start time', () => {
+      expect(() =>
+        validatePlannedEventSlot('event', {
+          repeats: 'once',
+          end: { time: '19:00' },
+        }),
+      ).toThrow('requires a start time');
     });
   });
 

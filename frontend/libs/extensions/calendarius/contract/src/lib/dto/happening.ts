@@ -102,17 +102,23 @@ export function validateHappeningDto(dto: IHappeningDbo): void {
   if (!dto.type) {
     throw new Error('happening has no type');
   }
-  if (!Object.keys(dto.slots || {})?.length) {
+  const slots = Object.entries(dto.slots || {});
+  const isPlannedSingleEvent = dto.type === 'single' && dto.kind === 'event';
+  if (!slots.length && !isPlannedSingleEvent) {
     throw new Error('!dto.slots?.length');
   }
   switch (dto.type) {
     case 'single':
-      Object.entries(dto.slots || {}).forEach(([slotID, slot]) =>
-        validateSingleHappeningSlot(slotID, slot),
-      );
+      slots.forEach(([slotID, slot]) => {
+        if (isPlannedSingleEvent) {
+          validatePlannedEventSlot(slotID, slot);
+        } else {
+          validateSingleHappeningSlot(slotID, slot);
+        }
+      });
       break;
     case 'recurring':
-      Object.entries(dto.slots || {}).forEach(([slotID, slot]) =>
+      slots.forEach(([slotID, slot]) =>
         validateRecurringHappeningSlot(slotID, slot),
       );
       break;
@@ -141,6 +147,36 @@ export function validateSingleHappeningSlot(
     );
   }
   validateHappeningSlot(slotID, slot);
+}
+
+// validatePlannedEventSlot accepts the independently known parts of a
+// one-time event plan. A title-only event has no slot; when a slot exists it
+// must contribute at least a date, time, location or duration.
+export function validatePlannedEventSlot(
+  slotID: string,
+  slot: IHappeningSlot,
+): void {
+  if (slot.repeats !== 'once') {
+    throw new Error(
+      `slots[${slotID}]: planned event slot repeats is not 'once': ${slot.repeats}`,
+    );
+  }
+  if (
+    !slot.start?.date &&
+    !slot.start?.time &&
+    !slot.end?.date &&
+    !slot.end?.time &&
+    !slot.durationMinutes &&
+    !slot.location?.title &&
+    !slot.location?.address
+  ) {
+    throw new Error(`slots[${slotID}]: planned event slot has no planning data`);
+  }
+  if ((slot.end?.time || slot.durationMinutes) && !slot.start?.time) {
+    throw new Error(
+      `slots[${slotID}]: planned event end or duration requires a start time`,
+    );
+  }
 }
 
 function validateHappeningSlot(slotID: string, slot: IHappeningSlot): void {
