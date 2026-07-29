@@ -1,3 +1,19 @@
+## 0.23.0 (2026-07-29)
+
+### 🚀 Features
+
+- define planned event happening contract ([52eafce](https://github.com/sneat-co/ext-calendarius/commit/52eafce))
+- **contract:** add Calendarius conversation service ([61fbf43](https://github.com/sneat-co/ext-calendarius/commit/61fbf43))
+
+### 🩹 Fixes
+
+- **conformance:** use int literal for EventHappeningSpec.DurationMinutes ([a6f077a](https://github.com/sneat-co/ext-calendarius/commit/a6f077a))
+
+### ❤️ Thank You
+
+- Alexander Trakhimenok @trakhimenok
+- Copilot @Copilot
+
 ## 0.22.4 (2026-07-14)
 
 ### 🩹 Fixes
