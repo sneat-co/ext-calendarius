@@ -6,9 +6,9 @@
   },
   "peerDependencies": {
     "@angular/core": ">=21.0.0",
-    "@sneat/core": "^0.22.0",
-    "@sneat/dto": "^0.22.0",
-    "@sneat/space-models": "^0.22.0"
+    "@sneat/core": "^0.22.0 || ^0.24.0",
+    "@sneat/dto": "^0.22.0 || ^0.24.0",
+    "@sneat/space-models": "^0.22.0 || ^0.24.0"
   },
   "sideEffects": false
 }
