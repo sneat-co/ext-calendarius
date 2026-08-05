@@ -1,3 +1,9 @@
+## 0.23.1 (2026-08-05)
+
+### 🩹 Fixes
+
+- **deps:** update javascript dependencies ([#18](https://github.com/sneat-co/ext-calendarius/pull/18))
+
 ## 0.23.0 (2026-07-29)
 
 ### 🚀 Features
