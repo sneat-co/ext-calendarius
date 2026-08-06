@@ -1,3 +1,9 @@
+## 0.23.2 (2026-08-06)
+
+### 🩹 Fixes
+
+- **deps:** update dependency @angular/core to v21.2.19 [security] ([#3](https://github.com/sneat-co/ext-calendarius/pull/3))
+
 ## 0.23.1 (2026-08-05)
 
 ### 🩹 Fixes
