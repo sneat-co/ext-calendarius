@@ -36,13 +36,17 @@ func (h *referenceProviderHarness) SeedHappening(t *testing.T, seed StoredHappen
 	if h.facade.events[seed.SpaceID] == nil {
 		h.facade.events[seed.SpaceID] = make(map[string]calendariusmodels.EventHappening)
 	}
-	event := eventFromSpec(id, seed.CreatedBy, seed.Spec, calendariusmodels.EventHappeningType(seed.Type), seed.Recurrence, seed.CreatedAt)
+	event := eventFromSpec(id, seed.CreatedBy, seed.Spec, calendariusmodels.EventHappeningType(seed.Type), seed.CreatedAt)
 	event.Prices = seed.Prices
 	event.Type = calendariusmodels.EventHappeningType(seed.Type)
 	event.Kind = calendariusmodels.EventHappeningKind(seed.Kind)
 	event.Status = calendariusmodels.EventHappeningStatus(seed.Status)
 	event.Version = seed.Version
 	h.facade.events[seed.SpaceID][id] = event
+	if seed.Recurrence != nil {
+		h.facade.ensureReferenceRecurrences(seed.SpaceID)
+		h.facade.recurrences[seed.SpaceID][id] = *seed.Recurrence
+	}
 	h.facade.ensureReferenceLinkage(seed.SpaceID, id)
 	link := h.facade.links[seed.SpaceID][id]
 	link.parentHappeningIDs = append([]string(nil), seed.LinkageParentHappeningIDs...)
@@ -76,9 +80,14 @@ func (h *referenceProviderHarness) Observe(t *testing.T, spaceID string) EventHa
 				RolesOfItem: []string{"child"}, RolesToItem: []string{"parent"},
 			})
 		}
+		var canonicalRecurrence *StoredHappeningRecurrenceObservation
+		if recurrence, ok := h.facade.recurrences[spaceID][event.ID]; ok {
+			canonicalRecurrence = &StoredHappeningRecurrenceObservation{Repeats: recurrence.Repeats}
+		}
 		observation.Happenings = append(observation.Happenings, StoredHappeningObservation{
 			SpaceID: spaceID, ID: event.ID, Type: string(event.Type), Kind: string(event.Kind), Status: string(event.Status),
-			Prices: event.Prices, Linkage: linkage, RelatedIDs: append([]string(nil), link.relatedIDs...),
+			Version: event.Version, Spec: event.Spec(), CanonicalRecurrence: canonicalRecurrence,
+			Prices: cloneHappeningPrices(event.Prices), Linkage: linkage, RelatedIDs: append([]string(nil), link.relatedIDs...),
 		})
 	}
 	for scope, receipt := range h.facade.ops {

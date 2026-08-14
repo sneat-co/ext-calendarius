@@ -6,6 +6,7 @@ package facade4calendariustest
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync"
 	"testing"
 
@@ -232,6 +233,65 @@ func RunEventHappeningsFacadeConformance(
 		}
 		if !updated.Event.IsScheduled() {
 			t.Fatalf("date-and-time event is not scheduled: %+v", updated)
+		}
+	})
+
+	t.Run("RecurringRootUpdateValidatesCompleteResultAtomically", func(t *testing.T) {
+		facade := newFacade(t)
+		created, err := facade.CreateEventHappening(
+			context.Background(), conformanceUserID, conformanceSpaceID,
+			calendariusmodels.CreateEventHappeningRequest{
+				RequestID: "create-recurring-update-root",
+				Type:      calendariusmodels.EventHappeningTypeRecurring,
+				Recurrence: &calendariusmodels.EventHappeningRecurrence{
+					Repeats: "yearly",
+				},
+				Spec: calendariusmodels.EventHappeningSpec{Title: "Annual cup"},
+			},
+		)
+		if err != nil {
+			t.Fatalf("create recurring root: %v", err)
+		}
+		newTitle := "Annual creators cup"
+		updated, err := facade.UpdateEventHappening(
+			context.Background(), conformanceUserID, conformanceSpaceID, created.Event.ID,
+			calendariusmodels.UpdateEventHappeningRequest{
+				RequestID: "rename-recurring-update-root", ExpectedVersion: created.Event.Version, Title: &newTitle,
+			},
+		)
+		if err != nil {
+			t.Fatalf("rename recurring root: %v", err)
+		}
+		if updated.Disposition != calendariusmodels.EventHappeningChanged ||
+			updated.Event.Version != created.Event.Version+1 || updated.Event.Title != newTitle ||
+			updated.Event.Type != calendariusmodels.EventHappeningTypeRecurring ||
+			updated.Event.Recurrence == nil || updated.Event.Recurrence.Repeats != "yearly" {
+			t.Fatalf("renamed recurring root = %+v", updated)
+		}
+
+		_, err = facade.UpdateEventHappening(
+			context.Background(), conformanceUserID, conformanceSpaceID, created.Event.ID,
+			calendariusmodels.UpdateEventHappeningRequest{
+				RequestID:       "schedule-recurring-update-root",
+				ExpectedVersion: updated.Event.Version,
+				Date:            ptr("2027-06-01"),
+				Time:            ptr("10:00"),
+				TimeZone:        ptr(conformanceTimeZone),
+				UTCOffset:       ptr(conformanceUTCOffset),
+				DurationMinutes: ptr(60),
+			},
+		)
+		if !errors.Is(err, facade4calendarius.ErrInvalidEventHappening) {
+			t.Fatalf("schedule recurring root error = %v, want ErrInvalidEventHappening", err)
+		}
+		afterFailure, err := facade.GetEventHappening(
+			context.Background(), conformanceUserID, conformanceSpaceID, created.Event.ID,
+		)
+		if err != nil {
+			t.Fatalf("get recurring root after rejected patch: %v", err)
+		}
+		if !reflect.DeepEqual(afterFailure, updated.Event) {
+			t.Fatalf("rejected recurring schedule patch changed projection: before=%+v after=%+v", updated.Event, afterFailure)
 		}
 	})
 

@@ -19,8 +19,8 @@ import (
 
 // EventHappeningsProviderHarness exposes the observations a real persistence
 // provider must make available to claim conformance. Facade-only tests cannot
-// prove row kind/type, atomic receipt persistence, audit cardinality, or
-// filtering of legacy/non-event rows.
+// prove raw row kind/type/recurrence, atomic receipt persistence, audit
+// cardinality, or filtering of legacy/non-event rows.
 type EventHappeningsProviderHarness interface {
 	Facade() facade4calendarius.EventHappeningsFacade
 	PrimaryUserID() string
@@ -55,14 +55,25 @@ type StoredHappeningSeed struct {
 }
 
 type StoredHappeningObservation struct {
-	SpaceID    string
-	ID         string
-	Type       string
-	Kind       string
-	Status     string
-	Prices     []*calendariusmodels.HappeningPrice
-	Linkage    []StoredHappeningLinkageObservation
-	RelatedIDs []string
+	SpaceID             string
+	ID                  string
+	Type                string
+	Kind                string
+	Status              string
+	Version             int64
+	Spec                calendariusmodels.EventHappeningSpec
+	CanonicalRecurrence *StoredHappeningRecurrenceObservation
+	Prices              []*calendariusmodels.HappeningPrice
+	Linkage             []StoredHappeningLinkageObservation
+	RelatedIDs          []string
+}
+
+// StoredHappeningRecurrenceObservation exposes the canonical Calendarius slot
+// cadence as raw provider state. A provider must not populate this observation
+// from the Event facade projection: it proves recurring roots reuse the existing
+// Calendarius recurrence authority instead of a second Event recurrence store.
+type StoredHappeningRecurrenceObservation struct {
+	Repeats string
 }
 
 // StoredHappeningLinkageObservation is the raw standard Sneat Linkage entry
@@ -191,6 +202,68 @@ func RunEventHappeningsProviderConformance(
 		}
 	})
 
+	t.Run("RecurringUpdateRejectsInvalidCompleteResultWithoutProviderMutation", func(t *testing.T) {
+		h := newHarness(t)
+		facade := h.Facade()
+		created, err := facade.CreateEventHappening(
+			context.Background(), h.PrimaryUserID(), h.PrimarySpaceID(),
+			calendariusmodels.CreateEventHappeningRequest{
+				RequestID: "provider-recurring-update-create",
+				Type:      calendariusmodels.EventHappeningTypeRecurring,
+				Recurrence: &calendariusmodels.EventHappeningRecurrence{
+					Repeats: "yearly",
+				},
+				Spec: calendariusmodels.EventHappeningSpec{Title: "Annual cup"},
+			},
+		)
+		if err != nil {
+			t.Fatalf("create recurring root: %v", err)
+		}
+		newTitle := "Annual creators cup"
+		updated, err := facade.UpdateEventHappening(
+			context.Background(), h.PrimaryUserID(), h.PrimarySpaceID(), created.Event.ID,
+			calendariusmodels.UpdateEventHappeningRequest{
+				RequestID: "provider-recurring-update-title", ExpectedVersion: created.Event.Version, Title: &newTitle,
+			},
+		)
+		if err != nil {
+			t.Fatalf("rename recurring root: %v", err)
+		}
+		if updated.Event.Type != calendariusmodels.EventHappeningTypeRecurring ||
+			updated.Event.Recurrence == nil || updated.Event.Recurrence.Repeats != "yearly" {
+			t.Fatalf("renamed recurring projection lost canonical recurrence: %+v", updated.Event)
+		}
+		beforeFailure := h.Observe(t, h.PrimarySpaceID())
+		row := findStoredHappeningObservation(t, beforeFailure, created.Event.ID)
+		if row.CanonicalRecurrence == nil || row.CanonicalRecurrence.Repeats != "yearly" {
+			t.Fatalf("raw canonical recurrence = %+v, want yearly", row.CanonicalRecurrence)
+		}
+
+		_, err = facade.UpdateEventHappening(
+			context.Background(), h.PrimaryUserID(), h.PrimarySpaceID(), created.Event.ID,
+			calendariusmodels.UpdateEventHappeningRequest{
+				RequestID:       "provider-recurring-update-schedule",
+				ExpectedVersion: updated.Event.Version,
+				Date:            ptr("2027-06-01"),
+				Time:            ptr("10:00"),
+				TimeZone:        ptr(conformanceTimeZone),
+				UTCOffset:       ptr(conformanceUTCOffset),
+				DurationMinutes: ptr(60),
+			},
+		)
+		if !errors.Is(err, facade4calendarius.ErrInvalidEventHappening) {
+			t.Fatalf("schedule recurring root error = %v, want ErrInvalidEventHappening", err)
+		}
+		afterFailure := h.Observe(t, h.PrimarySpaceID())
+		if !reflect.DeepEqual(afterFailure, beforeFailure) {
+			t.Fatalf("rejected recurring schedule patch changed row, version, receipt, or audit: before=%+v after=%+v", beforeFailure, afterFailure)
+		}
+		got := mustGetProviderEvent(t, facade, h.PrimaryUserID(), h.PrimarySpaceID(), created.Event.ID)
+		if !reflect.DeepEqual(got, updated.Event) {
+			t.Fatalf("rejected recurring schedule patch changed projection: before=%+v after=%+v", updated.Event, got)
+		}
+	})
+
 	t.Run("HierarchyIsDerivedFromReciprocalLinkageAndEachNodeOwnsPrices", func(t *testing.T) {
 		h := newHarness(t)
 		facade := h.Facade()
@@ -207,6 +280,10 @@ func RunEventHappeningsProviderConformance(
 		yearAfter := mustGetProviderEvent(t, facade, h.PrimaryUserID(), h.PrimarySpaceID(), year.Event.ID)
 		tournamentAfter := mustGetProviderEvent(t, facade, h.PrimaryUserID(), h.PrimarySpaceID(), tournament.Event.ID)
 		gameAfter := mustGetProviderEvent(t, facade, h.PrimaryUserID(), h.PrimarySpaceID(), game.Event.ID)
+		if rootAfter.Type != calendariusmodels.EventHappeningTypeRecurring ||
+			rootAfter.Recurrence == nil || rootAfter.Recurrence.Repeats != "yearly" {
+			t.Fatalf("recurring root projection = %+v, want canonical yearly recurrence", rootAfter)
+		}
 		assertProjectedHierarchy(t, rootAfter, "", []string{year.Event.ID})
 		assertProjectedHierarchy(t, yearAfter, root.Event.ID, []string{tournament.Event.ID})
 		assertProjectedHierarchy(t, tournamentAfter, year.Event.ID, []string{game.Event.ID})
@@ -222,6 +299,15 @@ func RunEventHappeningsProviderConformance(
 		assertRawReciprocalLinkage(t, observation, root.Event.ID, year.Event.ID)
 		assertRawReciprocalLinkage(t, observation, year.Event.ID, tournament.Event.ID)
 		assertRawReciprocalLinkage(t, observation, tournament.Event.ID, game.Event.ID)
+		rootRow := findStoredHappeningObservation(t, observation, root.Event.ID)
+		if rootRow.CanonicalRecurrence == nil || rootRow.CanonicalRecurrence.Repeats != "yearly" {
+			t.Fatalf("root canonical recurrence storage = %+v, want yearly", rootRow.CanonicalRecurrence)
+		}
+		for _, nodeID := range []string{year.Event.ID, tournament.Event.ID, game.Event.ID} {
+			if row := findStoredHappeningObservation(t, observation, nodeID); row.CanonicalRecurrence != nil {
+				t.Fatalf("single node %q has canonical recurrence storage: %+v", nodeID, row.CanonicalRecurrence)
+			}
+		}
 		if len(observation.Happenings) != 4 || len(observation.Receipts) != 4 {
 			t.Fatalf("hierarchy atomic state = %+v", observation)
 		}

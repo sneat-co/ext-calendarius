@@ -20,8 +20,12 @@ type referenceEventFacade struct {
 	mu     sync.Mutex
 	next   int
 	events map[string]map[string]calendariusmodels.EventHappening
-	links  map[string]map[string]referenceHappeningLinkage
-	ops    map[referenceRequestScope]referenceOperation
+	// recurrences emulates the existing canonical Calendarius recurring-slot
+	// state; Event projections are derived from it instead of persisting a
+	// second Event-owned recurrence field.
+	recurrences map[string]map[string]calendariusmodels.EventHappeningRecurrence
+	links       map[string]map[string]referenceHappeningLinkage
+	ops         map[referenceRequestScope]referenceOperation
 }
 
 type referenceHappeningLinkage struct {
@@ -45,9 +49,10 @@ type referenceOperation struct {
 
 func newReferenceEventFacade() *referenceEventFacade {
 	return &referenceEventFacade{
-		events: make(map[string]map[string]calendariusmodels.EventHappening),
-		links:  make(map[string]map[string]referenceHappeningLinkage),
-		ops:    make(map[referenceRequestScope]referenceOperation),
+		events:      make(map[string]map[string]calendariusmodels.EventHappening),
+		recurrences: make(map[string]map[string]calendariusmodels.EventHappeningRecurrence),
+		links:       make(map[string]map[string]referenceHappeningLinkage),
+		ops:         make(map[referenceRequestScope]referenceOperation),
 	}
 }
 
@@ -138,12 +143,16 @@ func (f *referenceEventFacade) CreateEventHappening(
 	}
 	f.next++
 	id := strconv.Itoa(f.next)
-	event := eventFromSpec(id, userID, request.Spec, request.EffectiveType(), request.Recurrence, time.Unix(int64(f.next), 0).UTC())
+	event := eventFromSpec(id, userID, request.Spec, request.EffectiveType(), time.Unix(int64(f.next), 0).UTC())
 	event.Prices = cloneHappeningPrices(request.Prices)
 	if f.events[spaceID] == nil {
 		f.events[spaceID] = make(map[string]calendariusmodels.EventHappening)
 	}
 	f.events[spaceID][id] = event
+	if request.Recurrence != nil {
+		f.ensureReferenceRecurrences(spaceID)
+		f.recurrences[spaceID][id] = *request.Recurrence
+	}
 	f.ensureReferenceLinkage(spaceID, id)
 	if request.ParentHappeningID != "" {
 		childLink := f.links[spaceID][id]
@@ -236,7 +245,7 @@ func (f *referenceEventFacade) UpdateEventHappening(
 	}
 	before := event
 	applyEventPatch(&event, request)
-	if err := event.Spec().Validate(); err != nil {
+	if err := event.Validate(); err != nil {
 		return calendariusmodels.EventHappeningMutation{}, fmt.Errorf("%w: %v", facade4calendarius.ErrInvalidEventHappening, err)
 	}
 	disposition := calendariusmodels.EventHappeningUnchanged
@@ -246,6 +255,7 @@ func (f *referenceEventFacade) UpdateEventHappening(
 	}
 	stored = event
 	stored.Hierarchy = calendariusmodels.EventHappeningHierarchy{}
+	stored.Recurrence = nil
 	f.events[spaceID][happeningID] = stored
 	mutation := calendariusmodels.EventHappeningMutation{Event: event, Disposition: disposition}
 	f.ops[scope] = referenceOperation{
@@ -331,6 +341,12 @@ func (f *referenceEventFacade) ensureReferenceLinkage(spaceID, happeningID strin
 	}
 }
 
+func (f *referenceEventFacade) ensureReferenceRecurrences(spaceID string) {
+	if f.recurrences[spaceID] == nil {
+		f.recurrences[spaceID] = make(map[string]calendariusmodels.EventHappeningRecurrence)
+	}
+}
+
 func referenceRelatedIDs(spaceID string, happeningIDs []string) []string {
 	if len(happeningIDs) == 0 {
 		return []string{"-"}
@@ -353,6 +369,11 @@ func (f *referenceEventFacade) projectEventLocked(
 	spaceID, happeningID string,
 	event calendariusmodels.EventHappening,
 ) (calendariusmodels.EventHappening, error) {
+	event.Recurrence = nil
+	if recurrence, ok := f.recurrences[spaceID][happeningID]; ok {
+		value := recurrence
+		event.Recurrence = &value
+	}
 	f.ensureReferenceLinkage(spaceID, happeningID)
 	link := f.links[spaceID][happeningID]
 	if len(link.parentHappeningIDs) > 1 {
@@ -442,14 +463,9 @@ func isEventHappeningType(value calendariusmodels.EventHappeningType) bool {
 	return value == calendariusmodels.EventHappeningTypeSingle || value == calendariusmodels.EventHappeningTypeRecurring
 }
 
-func eventFromSpec(id, createdBy string, spec calendariusmodels.EventHappeningSpec, eventType calendariusmodels.EventHappeningType, recurrence *calendariusmodels.EventHappeningRecurrence, createdAt time.Time) calendariusmodels.EventHappening {
-	var recurrenceCopy *calendariusmodels.EventHappeningRecurrence
-	if recurrence != nil {
-		value := *recurrence
-		recurrenceCopy = &value
-	}
+func eventFromSpec(id, createdBy string, spec calendariusmodels.EventHappeningSpec, eventType calendariusmodels.EventHappeningType, createdAt time.Time) calendariusmodels.EventHappening {
 	return calendariusmodels.EventHappening{
-		ID: id, Type: eventType, Recurrence: recurrenceCopy, Kind: calendariusmodels.EventHappeningKindEvent,
+		ID: id, Type: eventType, Kind: calendariusmodels.EventHappeningKindEvent,
 		Version: 1, Title: spec.Title, Date: spec.Date, Time: spec.Time, TimeZone: spec.TimeZone, UTCOffset: spec.UTCOffset,
 		EndDate: spec.EndDate, EndTime: spec.EndTime, EndUTCOffset: spec.EndUTCOffset,
 		Location: spec.Location, Description: spec.Description, DurationMinutes: spec.DurationMinutes,

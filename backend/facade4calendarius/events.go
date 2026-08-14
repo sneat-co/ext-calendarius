@@ -30,8 +30,9 @@ var (
 	// operation.
 	ErrEventHappeningUnauthorized = errors.New("event happening operation unauthorized")
 
-	// ErrEventHappeningNotFound also covers an ID whose stored row is not both
-	// type=single and kind=event; the facade never projects another Happening kind.
+	// ErrEventHappeningNotFound also covers an ID whose stored row is neither a
+	// supported Event Happening type nor kind=event; the facade never projects
+	// another Happening kind.
 	ErrEventHappeningNotFound = errors.New("event happening not found")
 
 	// ErrEventHappeningCorrupt is returned when a canonical row exists but cannot
@@ -102,8 +103,10 @@ type EventHappeningsFacade interface {
 	) (calendariusmodels.EventHappening, error)
 
 	// UpdateEventHappening applies a transactional patch, preserving fields the
-	// caller did not provide. ExpectedVersion is checked in the same transaction
-	// as the patch and durable idempotency receipt.
+	// caller did not provide. ExpectedVersion is checked and the complete
+	// resulting EventHappening, including type-specific recurrence and scheduling
+	// invariants, is validated in the same transaction before the patch and
+	// durable idempotency receipt commit.
 	UpdateEventHappening(
 		ctx context.Context,
 		userID, spaceID, happeningID string,

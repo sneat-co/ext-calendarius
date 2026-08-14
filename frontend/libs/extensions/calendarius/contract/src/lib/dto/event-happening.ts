@@ -95,7 +95,13 @@ export interface CreateEventHappeningRequestDto {
   readonly expectedParentVersion?: number;
 }
 
-/** Undefined leaves a field unchanged; an empty string clears an optional field. */
+/**
+ * Undefined leaves a field unchanged; an empty string clears an optional field.
+ * A provider must merge this patch with the current projection and validate the
+ * complete resulting EventHappening, including type-specific recurrence and
+ * scheduling invariants, before atomically writing the Happening, receipt, and
+ * audit fact.
+ */
 export interface UpdateEventHappeningRequestDto {
   readonly requestId: string;
   readonly expectedVersion: number;

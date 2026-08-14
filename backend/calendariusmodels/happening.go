@@ -143,7 +143,8 @@ func (v EventHappeningHierarchy) Validate(happeningID string) error {
 }
 
 // EventHappeningSpec is the mutable, platform-neutral plan for one canonical
-// Calendarius Happening with type=single and kind=event.
+// Calendarius kind=event Happening. Its enclosing EventHappening type and
+// recurrence determine whether concrete scheduling fields are allowed.
 //
 // Date and Time are independently optional during planning. Once both exist,
 // TimeZone (an IANA TZDB name) and UTCOffset (±HH:MM) are mandatory. The
@@ -562,7 +563,8 @@ type UpdateEventHappeningRequest struct {
 }
 
 // Validate checks a patch in isolation. Providers merge it with the current
-// projection and validate the resulting EventHappeningSpec atomically.
+// projection and validate the complete resulting EventHappening atomically,
+// including its type-specific recurrence and scheduling invariants.
 func (v UpdateEventHappeningRequest) Validate() error {
 	if err := validateEventHappeningRequestID(v.RequestID); err != nil {
 		return err
