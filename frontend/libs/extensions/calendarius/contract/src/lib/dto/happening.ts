@@ -14,6 +14,10 @@ export interface IHappeningParticipant {
   // readonly title: string;
 }
 
+/**
+ * Canonical Happening price-coverage term. This is independent of the
+ * Happening recurrence cadence; `quarter` does not make an event recurring.
+ */
 export type TermUnit =
   | 'single'
   | 'second'
@@ -34,6 +38,7 @@ export type CurrencyCode = 'USD' | 'EUR' | 'RUB' | string;
 
 export interface IAmount {
   readonly currency: CurrencyCode;
+  /** Integer minor units, matching decimal.Decimal64p2's canonical wire form. */
   readonly value: number;
 }
 
@@ -42,6 +47,100 @@ export interface IHappeningPrice {
   readonly term: ITerm;
   readonly amount: IAmount;
   readonly expenseQuantity?: number;
+}
+
+export const happeningPriceLimits = {
+  idMaxBytes: 200,
+  maxItems: 100,
+} as const;
+
+const happeningPriceTermUnits: readonly TermUnit[] = [
+  'single',
+  'second',
+  'minute',
+  'hour',
+  'day',
+  'week',
+  'month',
+  'quarter',
+  'year',
+];
+
+const canonicalCurrencyCodes = new Set(
+  (
+    Intl as typeof Intl & {
+      supportedValuesOf(key: 'currency'): readonly string[];
+    }
+  ).supportedValuesOf('currency'),
+);
+
+/**
+ * Validates the existing Happening-owned price projection. Price item IDs are
+ * the stable reference for consumers; multiple items may intentionally share
+ * a term. This helper does not introduce an Event-specific pricing authority.
+ */
+export function assertValidHappeningPrices(
+  prices: readonly IHappeningPrice[] | undefined,
+): void {
+  if (!prices) return;
+  if (prices.length > happeningPriceLimits.maxItems)
+    throw new Error(
+      `prices exceeds maximum item count ${happeningPriceLimits.maxItems}`,
+    );
+  const seen = new Set<string>();
+  for (const [index, price] of prices.entries()) {
+    assertHappeningPriceID(`prices[${index}].id`, price.id);
+    if (seen.has(price.id))
+      throw new Error(`prices[${index}].id duplicates ${price.id}`);
+    seen.add(price.id);
+    if (!happeningPriceTermUnits.includes(price.term.unit))
+      throw new Error(`prices[${index}].term has unknown unit`);
+    if (!Number.isSafeInteger(price.term.length) || price.term.length < 1)
+      throw new Error(`prices[${index}].term.length must be positive`);
+    if (!canonicalCurrencyCodes.has(price.amount.currency))
+      throw new Error(
+        `prices[${index}].amount.currency must be a canonical ISO 4217 code`,
+      );
+    if (!Number.isSafeInteger(price.amount.value) || price.amount.value < 0)
+      throw new Error(
+        `prices[${index}].amount.value must be nonnegative safe-integer minor units`,
+      );
+    if (
+      price.expenseQuantity !== undefined &&
+      (!Number.isSafeInteger(price.expenseQuantity) ||
+        price.expenseQuantity < 0)
+    )
+      throw new Error(
+        `prices[${index}].expenseQuantity must be a nonnegative safe integer`,
+      );
+  }
+}
+
+function assertHappeningPriceID(field: string, value: string): void {
+  if (!value) throw new Error(`${field} is required`);
+  if (value.trim() !== value)
+    throw new Error(`${field} must not have leading or trailing whitespace`);
+  if (!isWellFormedUnicode(value))
+    throw new Error(`${field} must encode as valid UTF-8`);
+  if (new TextEncoder().encode(value).byteLength > happeningPriceLimits.idMaxBytes)
+    throw new Error(
+      `${field} exceeds maximum UTF-8 byte length ${happeningPriceLimits.idMaxBytes}`,
+    );
+  if (value === '*') throw new Error(`${field} must not be '*'`);
+}
+
+function isWellFormedUnicode(value: string): boolean {
+  for (let i = 0; i < value.length; i++) {
+    const unit = value.charCodeAt(i);
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      if (i + 1 >= value.length) return false;
+      const next = value.charCodeAt(++i);
+      if (next < 0xdc00 || next > 0xdfff) return false;
+    } else if (unit >= 0xdc00 && unit <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export interface IHappeningBase extends IWithRelatedOnly {
