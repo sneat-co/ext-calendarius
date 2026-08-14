@@ -26,3 +26,40 @@ func TestEventHappeningSchedulednessIsDerived(t *testing.T) {
 		})
 	}
 }
+
+func TestEventHappeningSpecValidate(t *testing.T) {
+	valid := EventHappeningSpec{
+		Title: "Picnic", Date: "2026-08-01", Time: "12:30", EndTime: "14:00", Location: "Phoenix Park",
+	}
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("valid planned event: %v", err)
+	}
+	for _, tt := range []struct {
+		name string
+		spec EventHappeningSpec
+	}{
+		{name: "missing title", spec: EventHappeningSpec{}},
+		{name: "malformed date", spec: EventHappeningSpec{Title: "Picnic", Date: "not-a-date"}},
+		{name: "malformed time", spec: EventHappeningSpec{Title: "Picnic", Time: "noon"}},
+		{name: "duration before schedule", spec: EventHappeningSpec{Title: "Picnic", DurationMinutes: 60}},
+		{name: "end date without end time", spec: EventHappeningSpec{Title: "Picnic", Date: "2026-08-01", Time: "12:30", EndDate: "2026-08-01"}},
+		{name: "end and duration conflict", spec: EventHappeningSpec{Title: "Picnic", Date: "2026-08-01", Time: "12:30", EndTime: "14:00", DurationMinutes: 60}},
+		{name: "non finite duration", spec: EventHappeningSpec{Title: "Picnic", Date: "2026-08-01", Time: "12:30", DurationMinutes: EventHappeningDurationMaxMinutes + 1}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.spec.Validate(); err == nil {
+				t.Fatal("Validate() error = nil")
+			}
+		})
+	}
+}
+
+func TestUpdateEventHappeningRequestValidate(t *testing.T) {
+	title := "Picnic"
+	if err := (UpdateEventHappeningRequest{RequestID: "update-1", ExpectedVersion: 1, Title: &title}).Validate(); err != nil {
+		t.Fatalf("valid patch: %v", err)
+	}
+	if err := (UpdateEventHappeningRequest{RequestID: "update-1"}).Validate(); err == nil {
+		t.Fatal("missing expected version was accepted")
+	}
+}

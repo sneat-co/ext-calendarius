@@ -15,6 +15,15 @@ var (
 	// ErrEventHappeningClosed is returned when a mutation targets a Happening
 	// that is no longer active.
 	ErrEventHappeningClosed = errors.New("event happening is closed")
+
+	// ErrEventHappeningVersionConflict is returned when an update is based on a
+	// stale EventHappening.Version. The caller must re-read before retrying with
+	// a new request ID.
+	ErrEventHappeningVersionConflict = errors.New("event happening version conflict")
+
+	// ErrInvalidEventHappening is returned for a contract-validation failure.
+	// Providers may wrap the precise field error; callers can use errors.Is.
+	ErrInvalidEventHappening = errors.New("invalid event happening")
 )
 
 // EventHappeningsFacade exposes Eventius's canonical event lifecycle without

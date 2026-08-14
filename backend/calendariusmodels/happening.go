@@ -5,7 +5,23 @@
 // boundaries.
 package calendariusmodels
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+)
+
+const (
+	// EventHappeningTitleMaxLen is shared with Calendarius's persisted
+	// Happening title limit.
+	EventHappeningTitleMaxLen       = 100
+	EventHappeningLocationMaxLen    = 200
+	EventHappeningDescriptionMaxLen = 5000
+	EventHappeningRequestIDMaxLen   = 200
+	// One week is the largest finite duration an Event Happening accepts. Longer
+	// multi-day activities need an explicit end instead of an unbounded duration.
+	EventHappeningDurationMaxMinutes = 7 * 24 * 60
+)
 
 // HappeningSpec is the minimal timing/place a consumer supplies to create the
 // single calendarius happening that backs its own record (an eventius event, a
@@ -48,9 +64,52 @@ type EventHappeningSpec struct {
 	Title           string
 	Date            string
 	Time            string
+	EndDate         string
+	EndTime         string
 	Location        string
 	Description     string
 	DurationMinutes int
+}
+
+// Validate rejects malformed or ambiguous planning input. A date and a time
+// may each be known independently, but an explicit end or a duration only
+// makes sense once both start components are known. An omitted end is derived
+// by Calendarius from DurationMinutes (or its documented default).
+func (v EventHappeningSpec) Validate() error {
+	if err := validateEventHappeningText("title", v.Title, EventHappeningTitleMaxLen, true); err != nil {
+		return err
+	}
+	if err := validateEventHappeningDate("date", v.Date); err != nil {
+		return err
+	}
+	if err := validateEventHappeningTime("time", v.Time); err != nil {
+		return err
+	}
+	if err := validateEventHappeningDate("endDate", v.EndDate); err != nil {
+		return err
+	}
+	if err := validateEventHappeningTime("endTime", v.EndTime); err != nil {
+		return err
+	}
+	if err := validateEventHappeningText("location", v.Location, EventHappeningLocationMaxLen, false); err != nil {
+		return err
+	}
+	if err := validateEventHappeningText("description", v.Description, EventHappeningDescriptionMaxLen, false); err != nil {
+		return err
+	}
+	if v.DurationMinutes < 0 || v.DurationMinutes > EventHappeningDurationMaxMinutes {
+		return fmt.Errorf("durationMinutes must be between 0 and %d", EventHappeningDurationMaxMinutes)
+	}
+	if (v.EndDate != "" || v.EndTime != "" || v.DurationMinutes != 0) && (v.Date == "" || v.Time == "") {
+		return fmt.Errorf("endDate, endTime, and durationMinutes require both date and time")
+	}
+	if v.EndDate != "" && v.EndTime == "" {
+		return fmt.Errorf("endDate requires endTime")
+	}
+	if v.EndTime != "" && v.DurationMinutes != 0 {
+		return fmt.Errorf("endTime and durationMinutes are mutually exclusive")
+	}
+	return nil
 }
 
 // IsScheduled derives whether the spec has enough information to place the
@@ -65,9 +124,12 @@ func (v EventHappeningSpec) IsScheduled() bool {
 // must not create a second event record with another ID.
 type EventHappening struct {
 	ID              string
+	Version         int64
 	Title           string
 	Date            string
 	Time            string
+	EndDate         string
+	EndTime         string
 	Location        string
 	Description     string
 	DurationMinutes int
@@ -117,16 +179,120 @@ type CreateEventHappeningRequest struct {
 	Spec      EventHappeningSpec
 }
 
+// Validate confirms request identity and the initial event plan before a
+// provider starts an idempotent operation.
+func (v CreateEventHappeningRequest) Validate() error {
+	if err := validateEventHappeningRequestID(v.RequestID); err != nil {
+		return err
+	}
+	return v.Spec.Validate()
+}
+
 // UpdateEventHappeningRequest is a transactional patch. Nil means "leave the
 // field unchanged"; a non-nil empty string clears an optional planning field.
 // Title may not be cleared. RequestID has the same idempotency semantics as on
 // create.
 type UpdateEventHappeningRequest struct {
-	RequestID       string
+	RequestID string
+	// ExpectedVersion is mandatory optimistic-concurrency protection. Providers
+	// return facade4calendarius.ErrEventHappeningVersionConflict when it is stale.
+	ExpectedVersion int64
 	Title           *string
 	Date            *string
 	Time            *string
+	EndDate         *string
+	EndTime         *string
 	Location        *string
 	Description     *string
 	DurationMinutes *int
+}
+
+// Validate checks a patch in isolation. Providers must merge it with the
+// current EventHappening and call EventHappeningSpec.Validate before writing.
+func (v UpdateEventHappeningRequest) Validate() error {
+	if err := validateEventHappeningRequestID(v.RequestID); err != nil {
+		return err
+	}
+	if v.ExpectedVersion < 1 {
+		return fmt.Errorf("expectedVersion must be positive")
+	}
+	if v.Title != nil {
+		if err := validateEventHappeningText("title", *v.Title, EventHappeningTitleMaxLen, true); err != nil {
+			return err
+		}
+	}
+	if v.Date != nil {
+		if err := validateEventHappeningDate("date", *v.Date); err != nil {
+			return err
+		}
+	}
+	if v.Time != nil {
+		if err := validateEventHappeningTime("time", *v.Time); err != nil {
+			return err
+		}
+	}
+	if v.EndDate != nil {
+		if err := validateEventHappeningDate("endDate", *v.EndDate); err != nil {
+			return err
+		}
+	}
+	if v.EndTime != nil {
+		if err := validateEventHappeningTime("endTime", *v.EndTime); err != nil {
+			return err
+		}
+	}
+	if v.Location != nil {
+		if err := validateEventHappeningText("location", *v.Location, EventHappeningLocationMaxLen, false); err != nil {
+			return err
+		}
+	}
+	if v.Description != nil {
+		if err := validateEventHappeningText("description", *v.Description, EventHappeningDescriptionMaxLen, false); err != nil {
+			return err
+		}
+	}
+	if v.DurationMinutes != nil && (*v.DurationMinutes < 0 || *v.DurationMinutes > EventHappeningDurationMaxMinutes) {
+		return fmt.Errorf("durationMinutes must be between 0 and %d", EventHappeningDurationMaxMinutes)
+	}
+	return nil
+}
+
+func validateEventHappeningRequestID(value string) error {
+	return validateEventHappeningText("requestID", value, EventHappeningRequestIDMaxLen, true)
+}
+
+func validateEventHappeningText(field, value string, maxLen int, required bool) error {
+	if value == "" {
+		if required {
+			return fmt.Errorf("%s is required", field)
+		}
+		return nil
+	}
+	if strings.TrimSpace(value) != value {
+		return fmt.Errorf("%s must not have leading or trailing whitespace", field)
+	}
+	if len(value) > maxLen {
+		return fmt.Errorf("%s exceeds maximum length %d", field, maxLen)
+	}
+	return nil
+}
+
+func validateEventHappeningDate(field, value string) error {
+	if value == "" {
+		return nil
+	}
+	if _, err := time.Parse(time.DateOnly, value); err != nil {
+		return fmt.Errorf("%s must be ISO date: %w", field, err)
+	}
+	return nil
+}
+
+func validateEventHappeningTime(field, value string) error {
+	if value == "" {
+		return nil
+	}
+	if _, err := time.Parse("15:04", value); err != nil {
+		return fmt.Errorf("%s must be 24-hour HH:MM time: %w", field, err)
+	}
+	return nil
 }

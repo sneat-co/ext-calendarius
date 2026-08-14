@@ -6,6 +6,7 @@ package facade4calendariustest
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/sneat-co/ext-calendarius/backend/calendariusmodels"
@@ -115,6 +116,7 @@ func RunEventHappeningsFacadeConformance(
 			created.Event.ID,
 			calendariusmodels.UpdateEventHappeningRequest{
 				RequestID:       "schedule-event",
+				ExpectedVersion: created.Event.Version,
 				Date:            ptr("2026-08-01"),
 				Time:            ptr("12:30"),
 				Location:        ptr("Phoenix Park"),
@@ -226,8 +228,9 @@ func RunEventHappeningsFacadeConformance(
 			t.Fatalf("create: %v", err)
 		}
 		request := calendariusmodels.UpdateEventHappeningRequest{
-			RequestID: "patch-time",
-			Time:      ptr("12:30"),
+			RequestID:       "patch-time",
+			ExpectedVersion: created.Event.Version,
+			Time:            ptr("12:30"),
 		}
 		first, err := facade.UpdateEventHappening(
 			context.Background(), conformanceUserID, conformanceSpaceID, created.Event.ID, request,
@@ -269,7 +272,7 @@ func RunEventHappeningsFacadeConformance(
 		facade := newFacade(t)
 		_, err := facade.UpdateEventHappening(
 			context.Background(), conformanceUserID, conformanceSpaceID, "nonexistent-id",
-			calendariusmodels.UpdateEventHappeningRequest{RequestID: "update-nonexistent"},
+			calendariusmodels.UpdateEventHappeningRequest{RequestID: "update-nonexistent", ExpectedVersion: 1},
 		)
 		if err == nil {
 			t.Fatal("UpdateEventHappening() expected error for non-existent ID, got nil")
@@ -304,6 +307,7 @@ func RunEventHappeningsFacadeConformance(
 			context.Background(), conformanceUserID, conformanceSpaceID, created.Event.ID,
 			calendariusmodels.UpdateEventHappeningRequest{
 				RequestID:       "update-all-fields",
+				ExpectedVersion: created.Event.Version,
 				Title:           &newTitle,
 				Date:            ptr("2026-09-15"),
 				Time:            ptr("14:00"),
@@ -323,6 +327,7 @@ func RunEventHappeningsFacadeConformance(
 			context.Background(), conformanceUserID, conformanceSpaceID, created.Event.ID,
 			calendariusmodels.UpdateEventHappeningRequest{
 				RequestID:       "update-same-again",
+				ExpectedVersion: updated.Event.Version,
 				Title:           &newTitle,
 				Date:            ptr("2026-09-15"),
 				Time:            ptr("14:00"),
@@ -336,6 +341,77 @@ func RunEventHappeningsFacadeConformance(
 		}
 		if sameUpdate.Disposition != calendariusmodels.EventHappeningUnchanged {
 			t.Fatalf("same update disposition = %q, want unchanged", sameUpdate.Disposition)
+		}
+	})
+
+	t.Run("StaleExpectedVersionFailsWithoutChangingEvent", func(t *testing.T) {
+		facade := newFacade(t)
+		created, err := facade.CreateEventHappening(context.Background(), conformanceUserID, conformanceSpaceID,
+			calendariusmodels.CreateEventHappeningRequest{RequestID: "create-versioned", Spec: calendariusmodels.EventHappeningSpec{Title: "Picnic"}})
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		changedTitle := "Changed"
+		if _, err = facade.UpdateEventHappening(context.Background(), conformanceUserID, conformanceSpaceID, created.Event.ID,
+			calendariusmodels.UpdateEventHappeningRequest{RequestID: "update-current", ExpectedVersion: created.Event.Version, Title: &changedTitle}); err != nil {
+			t.Fatalf("current update: %v", err)
+		}
+		staleTitle := "Stale"
+		if _, err = facade.UpdateEventHappening(context.Background(), conformanceUserID, conformanceSpaceID, created.Event.ID,
+			calendariusmodels.UpdateEventHappeningRequest{RequestID: "update-stale", ExpectedVersion: created.Event.Version, Title: &staleTitle}); !errors.Is(err, facade4calendarius.ErrEventHappeningVersionConflict) {
+			t.Fatalf("stale update error = %v, want ErrEventHappeningVersionConflict", err)
+		}
+	})
+
+	t.Run("ConcurrentCreateReplaysOneCanonicalEvent", func(t *testing.T) {
+		facade := newFacade(t)
+		request := calendariusmodels.CreateEventHappeningRequest{
+			RequestID: "concurrent-create",
+			Spec:      calendariusmodels.EventHappeningSpec{Title: "Concurrent picnic"},
+		}
+		const callers = 12
+		results := make(chan calendariusmodels.EventHappeningMutation, callers)
+		errorsCh := make(chan error, callers)
+		var start sync.WaitGroup
+		start.Add(1)
+		var done sync.WaitGroup
+		for range callers {
+			done.Add(1)
+			go func() {
+				defer done.Done()
+				start.Wait()
+				result, err := facade.CreateEventHappening(context.Background(), conformanceUserID, conformanceSpaceID, request)
+				if err != nil {
+					errorsCh <- err
+					return
+				}
+				results <- result
+			}()
+		}
+		start.Done()
+		done.Wait()
+		close(results)
+		close(errorsCh)
+		for err := range errorsCh {
+			t.Fatalf("concurrent create: %v", err)
+		}
+		var id string
+		created := 0
+		for result := range results {
+			if id == "" {
+				id = result.Event.ID
+			}
+			if result.Event.ID != id {
+				t.Fatalf("concurrent create returned IDs %q and %q", id, result.Event.ID)
+			}
+			if result.Disposition == calendariusmodels.EventHappeningCreated {
+				created++
+			} else if result.Disposition != calendariusmodels.EventHappeningReused {
+				t.Fatalf("concurrent create disposition = %q, want created or reused", result.Disposition)
+			}
+		}
+		if created != 1 {
+			t.Fatalf("concurrent create count = %d, want 1", created)
 		}
 	})
 }

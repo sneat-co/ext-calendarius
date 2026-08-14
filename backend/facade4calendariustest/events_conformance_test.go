@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 )
 
 type referenceEventFacade struct {
+	mu     sync.Mutex
 	next   int
 	events map[string]calendariusmodels.EventHappening
 	ops    map[string]referenceOperation
@@ -37,6 +39,8 @@ func (f *referenceEventFacade) CreateEventHappening(
 	request calendariusmodels.CreateEventHappeningRequest,
 ) (calendariusmodels.EventHappeningMutation, error) {
 	fingerprint := "create:" + jsonFingerprint(request.Spec)
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if operation, ok := f.ops[request.RequestID]; ok {
 		if operation.fingerprint != fingerprint {
 			return calendariusmodels.EventHappeningMutation{}, facade4calendarius.ErrRequestIDConflict
@@ -45,6 +49,9 @@ func (f *referenceEventFacade) CreateEventHappening(
 			Event:       f.events[operation.eventID],
 			Disposition: calendariusmodels.EventHappeningReused,
 		}, nil
+	}
+	if err := request.Validate(); err != nil {
+		return calendariusmodels.EventHappeningMutation{}, fmt.Errorf("%w: %v", facade4calendarius.ErrInvalidEventHappening, err)
 	}
 	f.next++
 	id := strconv.Itoa(f.next)
@@ -61,6 +68,8 @@ func (f *referenceEventFacade) GetEventHappening(
 	_ context.Context,
 	_, _, happeningID string,
 ) (calendariusmodels.EventHappening, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	event, ok := f.events[happeningID]
 	if !ok {
 		return calendariusmodels.EventHappening{}, fmt.Errorf("event not found")
@@ -74,6 +83,8 @@ func (f *referenceEventFacade) UpdateEventHappening(
 	request calendariusmodels.UpdateEventHappeningRequest,
 ) (calendariusmodels.EventHappeningMutation, error) {
 	fingerprint := "update:" + happeningID + ":" + jsonFingerprint(request)
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if operation, ok := f.ops[request.RequestID]; ok {
 		if operation.fingerprint != fingerprint {
 			return calendariusmodels.EventHappeningMutation{}, facade4calendarius.ErrRequestIDConflict
@@ -83,9 +94,15 @@ func (f *referenceEventFacade) UpdateEventHappening(
 			Disposition: calendariusmodels.EventHappeningReused,
 		}, nil
 	}
+	if err := request.Validate(); err != nil {
+		return calendariusmodels.EventHappeningMutation{}, fmt.Errorf("%w: %v", facade4calendarius.ErrInvalidEventHappening, err)
+	}
 	event, ok := f.events[happeningID]
 	if !ok {
 		return calendariusmodels.EventHappeningMutation{}, fmt.Errorf("event not found")
+	}
+	if request.ExpectedVersion != event.Version {
+		return calendariusmodels.EventHappeningMutation{}, facade4calendarius.ErrEventHappeningVersionConflict
 	}
 	before := event
 	if request.Title != nil {
@@ -97,6 +114,12 @@ func (f *referenceEventFacade) UpdateEventHappening(
 	if request.Time != nil {
 		event.Time = *request.Time
 	}
+	if request.EndDate != nil {
+		event.EndDate = *request.EndDate
+	}
+	if request.EndTime != nil {
+		event.EndTime = *request.EndTime
+	}
 	if request.Location != nil {
 		event.Location = *request.Location
 	}
@@ -105,6 +128,15 @@ func (f *referenceEventFacade) UpdateEventHappening(
 	}
 	if request.DurationMinutes != nil {
 		event.DurationMinutes = *request.DurationMinutes
+	}
+	if err := (calendariusmodels.EventHappeningSpec{
+		Title: event.Title, Date: event.Date, Time: event.Time, EndDate: event.EndDate, EndTime: event.EndTime,
+		Location: event.Location, Description: event.Description, DurationMinutes: event.DurationMinutes,
+	}).Validate(); err != nil {
+		return calendariusmodels.EventHappeningMutation{}, fmt.Errorf("%w: %v", facade4calendarius.ErrInvalidEventHappening, err)
+	}
+	if event != before {
+		event.Version++
 	}
 	f.events[happeningID] = event
 	f.ops[request.RequestID] = referenceOperation{fingerprint: fingerprint, eventID: happeningID}
@@ -119,6 +151,8 @@ func (f *referenceEventFacade) ListEventHappenings(
 	_ context.Context,
 	_, _ string,
 ) ([]calendariusmodels.EventHappening, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	events := make([]calendariusmodels.EventHappening, 0, len(f.events))
 	for _, event := range f.events {
 		events = append(events, event)
@@ -135,9 +169,12 @@ func (f *referenceEventFacade) ListEventHappenings(
 func eventFromSpec(id, createdBy string, spec calendariusmodels.EventHappeningSpec) calendariusmodels.EventHappening {
 	return calendariusmodels.EventHappening{
 		ID:              id,
+		Version:         1,
 		Title:           spec.Title,
 		Date:            spec.Date,
 		Time:            spec.Time,
+		EndDate:         spec.EndDate,
+		EndTime:         spec.EndTime,
 		Location:        spec.Location,
 		Description:     spec.Description,
 		DurationMinutes: spec.DurationMinutes,

@@ -15,6 +15,9 @@ func TestErrorSentinels(t *testing.T) {
 	if ErrRequestIDConflict == ErrEventHappeningClosed {
 		t.Fatal("error sentinels must be distinct")
 	}
+	if ErrEventHappeningVersionConflict == ErrRequestIDConflict || ErrInvalidEventHappening == ErrRequestIDConflict {
+		t.Fatal("error sentinels must be distinct")
+	}
 	// Confirm errors.Is works for direct equality comparisons.
 	if !errors.Is(ErrRequestIDConflict, ErrRequestIDConflict) {
 		t.Fatal("ErrRequestIDConflict must match itself")
