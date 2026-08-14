@@ -36,7 +36,7 @@ func (h *referenceProviderHarness) SeedHappening(t *testing.T, seed StoredHappen
 	if h.facade.events[seed.SpaceID] == nil {
 		h.facade.events[seed.SpaceID] = make(map[string]calendariusmodels.EventHappening)
 	}
-	event := eventFromSpec(id, seed.CreatedBy, seed.Spec, seed.CreatedAt)
+	event := eventFromSpec(id, seed.CreatedBy, seed.Spec, calendariusmodels.EventHappeningType(seed.Type), seed.Recurrence, seed.CreatedAt)
 	event.Prices = seed.Prices
 	event.Type = calendariusmodels.EventHappeningType(seed.Type)
 	event.Kind = calendariusmodels.EventHappeningKind(seed.Kind)

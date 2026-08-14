@@ -20,11 +20,13 @@ export const eventHappeningLimits = {
 
 /**
  * Stable Eventius-facing projection of the canonical Calendarius
- * `type=single`, `kind=event` Happening.
+ * `kind=event` Happening. A single node is an edition, Tournament or game;
+ * a recurring yearly node is an annual Series/Cup root.
  */
 export interface EventHappeningDto extends EventHappeningSpecDto {
   readonly id: string;
-  readonly type: 'single';
+  readonly type: EventHappeningType;
+  readonly recurrence?: EventHappeningRecurrenceDto;
   readonly kind: 'event';
   readonly version: number;
   readonly status: EventHappeningStatus;
@@ -40,6 +42,14 @@ export interface EventHappeningDto extends EventHappeningSpecDto {
 export interface EventHappeningHierarchyDto {
   readonly parentHappeningId?: string;
   readonly childHappeningIds: readonly string[];
+}
+
+export type EventHappeningType = 'single' | 'recurring';
+
+/** Existing Calendarius recurrence vocabulary; this contract only exposes the
+ * annual Series/Cup case and delegates occurrence expansion to Calendarius. */
+export interface EventHappeningRecurrenceDto {
+  readonly repeats: 'yearly';
 }
 
 export type EventHappeningStatus =
@@ -74,6 +84,9 @@ export interface EventHappeningSpecDto {
 
 export interface CreateEventHappeningRequestDto {
   readonly requestId: string;
+  /** Omit only for legacy callers; it normalizes to `single` in the canonical fingerprint. */
+  readonly type?: EventHappeningType;
+  readonly recurrence?: EventHappeningRecurrenceDto;
   readonly spec: EventHappeningSpecDto;
   /** Optional initial canonical Happening prices, persisted with creation. */
   readonly prices?: readonly IHappeningPrice[];
@@ -196,6 +209,7 @@ export function assertValidCreateEventHappeningRequest(
     true,
   );
   assertValidEventHappeningSpec(value.spec);
+  assertTypeAndRecurrence(value.type ?? 'single', value.recurrence, value.spec);
   assertValidHappeningPrices(value.prices);
   if (value.parentHappeningId) {
     assertLinkHappeningId('parentHappeningId', value.parentHappeningId);
@@ -257,7 +271,7 @@ export function assertValidUpdateEventHappeningRequest(
 
 export function assertValidEventHappening(value: EventHappeningDto): void {
   assertLinkHappeningId('id', value.id);
-  if (value.type !== 'single') throw new Error('type must be single');
+  assertTypeAndRecurrence(value.type, value.recurrence, value);
   if (value.kind !== 'event') throw new Error('kind must be event');
   if (!Number.isSafeInteger(value.version) || value.version < 1)
     throw new Error('version must be a positive safe integer');
@@ -274,6 +288,24 @@ export function assertValidEventHappening(value: EventHappeningDto): void {
   assertValidHappeningPrices(value.prices);
   assertValidEventHappeningHierarchy(value.id, value.hierarchy);
   assertValidEventHappeningSpec(value);
+}
+
+function assertTypeAndRecurrence(
+  type: EventHappeningType,
+  recurrence: EventHappeningRecurrenceDto | undefined,
+  spec: EventHappeningSpecDto,
+): void {
+  if (type === 'single') {
+    if (recurrence) throw new Error('single Happening must not have recurrence');
+    return;
+  }
+  if (type !== 'recurring') throw new Error(`unknown happening type: ${type}`);
+  if (!recurrence || recurrence.repeats !== 'yearly')
+    throw new Error('recurring Happening requires Calendarius yearly recurrence');
+  if (
+    spec.date || spec.time || spec.utcOffset || spec.endDate || spec.endTime ||
+    spec.endUtcOffset || (spec.durationMinutes ?? 0) !== 0
+  ) throw new Error('recurring Happening must use Calendarius recurrence instead of a concrete single-event schedule');
 }
 
 export function assertValidEventHappeningHierarchy(

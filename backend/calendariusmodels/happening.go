@@ -78,7 +78,27 @@ type HappeningBrief struct {
 
 type EventHappeningType string
 
-const EventHappeningTypeSingle EventHappeningType = "single"
+const (
+	EventHappeningTypeSingle    EventHappeningType = "single"
+	EventHappeningTypeRecurring EventHappeningType = "recurring"
+)
+
+// EventHappeningRecurrence deliberately reuses Calendarius's existing slot
+// cadence vocabulary. This Event facade does not expand occurrences or own a
+// second recurrence engine: the real provider maps this value to its normal
+// recurring Happening/slot representation and delegates expansion to
+// RecurringHappeningsFacade. The first public hierarchy use case is an annual
+// Series/Cup root, hence yearly is the only accepted cadence here.
+type EventHappeningRecurrence struct {
+	Repeats string
+}
+
+func (v EventHappeningRecurrence) Validate() error {
+	if v.Repeats != "yearly" {
+		return fmt.Errorf("recurrence.repeats must be Calendarius yearly")
+	}
+	return nil
+}
 
 type EventHappeningKind string
 
@@ -258,6 +278,7 @@ type EventHappening struct {
 	Hierarchy       EventHappeningHierarchy
 	ID              string
 	Type            EventHappeningType
+	Recurrence      *EventHappeningRecurrence
 	Kind            EventHappeningKind
 	Version         int64
 	Title           string
@@ -290,8 +311,23 @@ func (v EventHappening) Validate() error {
 	if err := validateEventHappeningLinkID("id", v.ID); err != nil {
 		return err
 	}
-	if v.Type != EventHappeningTypeSingle {
-		return fmt.Errorf("type must be %q, got %q", EventHappeningTypeSingle, v.Type)
+	switch v.Type {
+	case EventHappeningTypeSingle:
+		if v.Recurrence != nil {
+			return fmt.Errorf("single Happening must not have recurrence")
+		}
+	case EventHappeningTypeRecurring:
+		if v.Recurrence == nil {
+			return fmt.Errorf("recurring Happening requires recurrence")
+		}
+		if err := v.Recurrence.Validate(); err != nil {
+			return err
+		}
+		if v.Date != "" || v.Time != "" || v.UTCOffset != "" || v.EndDate != "" || v.EndTime != "" || v.EndUTCOffset != "" || v.DurationMinutes != 0 {
+			return fmt.Errorf("recurring Happening must use Calendarius recurrence instead of a concrete single-event schedule")
+		}
+	default:
+		return fmt.Errorf("unknown happening type %q", v.Type)
 	}
 	if v.Kind != EventHappeningKindEvent {
 		return fmt.Errorf("kind must be %q, got %q", EventHappeningKindEvent, v.Kind)
@@ -429,7 +465,11 @@ func ValidateEventHappeningID(value string) error {
 // create path. Later price edits use that generic pricing command surface.
 type CreateEventHappeningRequest struct {
 	WithHappeningPrices
-	RequestID             string
+	RequestID string
+	// Type is explicit for new callers. Empty remains a deprecated compatibility
+	// spelling of single while provider fingerprints always use EffectiveType().
+	Type                  EventHappeningType
+	Recurrence            *EventHappeningRecurrence
 	ParentHappeningID     string
 	ExpectedParentVersion int64
 	Spec                  EventHappeningSpec
@@ -441,6 +481,24 @@ func (v CreateEventHappeningRequest) Validate() error {
 	}
 	if err := v.Spec.Validate(); err != nil {
 		return err
+	}
+	switch v.EffectiveType() {
+	case EventHappeningTypeSingle:
+		if v.Recurrence != nil {
+			return fmt.Errorf("single Happening must not have recurrence")
+		}
+	case EventHappeningTypeRecurring:
+		if v.Recurrence == nil {
+			return fmt.Errorf("recurring Happening requires recurrence")
+		}
+		if err := v.Recurrence.Validate(); err != nil {
+			return err
+		}
+		if v.Spec.Date != "" || v.Spec.Time != "" || v.Spec.UTCOffset != "" || v.Spec.EndDate != "" || v.Spec.EndTime != "" || v.Spec.EndUTCOffset != "" || v.Spec.DurationMinutes != 0 {
+			return fmt.Errorf("recurring Happening must use Calendarius recurrence instead of a concrete single-event schedule")
+		}
+	default:
+		return fmt.Errorf("unknown happening type %q", v.Type)
 	}
 	if v.ParentHappeningID == "" {
 		if v.ExpectedParentVersion != 0 {
@@ -457,6 +515,13 @@ func (v CreateEventHappeningRequest) Validate() error {
 	return v.WithHappeningPrices.ValidateProjection()
 }
 
+func (v CreateEventHappeningRequest) EffectiveType() EventHappeningType {
+	if v.Type == "" {
+		return EventHappeningTypeSingle
+	}
+	return v.Type
+}
+
 // Fingerprint returns the normative SHA-256 fingerprint of the operation and
 // canonical full payload. Providers persist it with the request receipt.
 func (v CreateEventHappeningRequest) Fingerprint() (string, error) {
@@ -465,6 +530,12 @@ func (v CreateEventHappeningRequest) Fingerprint() (string, error) {
 	}
 	w := newEventHappeningFingerprintWriter(EventHappeningOperationCreate)
 	w.writeString(v.RequestID)
+	w.writeString(string(v.EffectiveType()))
+	if v.Recurrence == nil {
+		w.writeString("")
+	} else {
+		w.writeString(v.Recurrence.Repeats)
+	}
 	w.writeString(v.ParentHappeningID)
 	w.writeInt64(v.ExpectedParentVersion)
 	w.writeSpec(v.Spec)

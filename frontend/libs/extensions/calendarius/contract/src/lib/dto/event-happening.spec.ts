@@ -158,6 +158,24 @@ describe('Event Happening contract', () => {
     ).toThrow('safe-integer minor units');
   });
 
+  it('projects an annual recurring Series root and rejects a concrete single schedule on it', () => {
+    const series: EventHappeningDto = {
+      id: 'annual-cup', type: 'recurring', recurrence: { repeats: 'yearly' }, kind: 'event',
+      title: 'Annual cup', version: 1, status: 'active', createdBy: 'user1',
+      createdAt: '2026-08-01T10:00:00Z', hierarchy: { childHappeningIds: ['cup-2026'] },
+    };
+    expect(() => assertValidEventHappening(series)).not.toThrow();
+    expect(() => assertValidCreateEventHappeningRequest({
+      requestId: 'annual-cup-create', type: 'recurring', recurrence: { repeats: 'yearly' },
+      spec: { title: 'Annual cup' },
+    })).not.toThrow();
+    expect(() => assertValidEventHappening({ ...series, time: '12:00' })).toThrow('recurrence');
+    expect(() => assertValidCreateEventHappeningRequest({
+      requestId: 'bad-recurring', type: 'recurring', recurrence: { repeats: 'yearly' },
+      spec: { title: 'Annual cup', date: '2026-08-01', time: '12:00', timeZone: 'Europe/Dublin', utcOffset: '+01:00' },
+    })).toThrow('recurrence');
+  });
+
   it('validates non-recursive same-Space hierarchy conveniences', () => {
     expect(() =>
       assertValidCreateEventHappeningRequest({

@@ -36,14 +36,15 @@ type EventHappeningsProviderHarness interface {
 // harness can insert non-event and corrupt legacy rows that the public facade
 // must exclude or reject.
 type StoredHappeningSeed struct {
-	SpaceID string
-	ID      string
-	Type    string
-	Kind    string
-	Status  string
-	Version int64
-	Spec    calendariusmodels.EventHappeningSpec
-	Prices  []*calendariusmodels.HappeningPrice
+	SpaceID    string
+	ID         string
+	Type       string
+	Kind       string
+	Status     string
+	Version    int64
+	Spec       calendariusmodels.EventHappeningSpec
+	Recurrence *calendariusmodels.EventHappeningRecurrence
+	Prices     []*calendariusmodels.HappeningPrice
 	// These fields represent raw standard Sneat Linkage roles and search
 	// indexes, not persisted EventHappening hierarchy convenience fields.
 	LinkageParentHappeningIDs []string
@@ -194,13 +195,13 @@ func RunEventHappeningsProviderConformance(
 		h := newHarness(t)
 		facade := h.Facade()
 		root := createProviderHierarchyNode(t, facade, h.PrimaryUserID(), h.PrimarySpaceID(),
-			"hierarchy-root", "Annual cup", "", 0, 1000)
+			"hierarchy-root", "Annual cup", "", 0, 1000, calendariusmodels.EventHappeningTypeRecurring)
 		year := createProviderHierarchyNode(t, facade, h.PrimaryUserID(), h.PrimarySpaceID(),
-			"hierarchy-year", "2026 cup", root.Event.ID, root.Event.Version, 2000)
+			"hierarchy-year", "2026 cup", root.Event.ID, root.Event.Version, 2000, calendariusmodels.EventHappeningTypeSingle)
 		tournament := createProviderHierarchyNode(t, facade, h.PrimaryUserID(), h.PrimarySpaceID(),
-			"hierarchy-tournament", "Open tournament", year.Event.ID, year.Event.Version, 3000)
+			"hierarchy-tournament", "Open tournament", year.Event.ID, year.Event.Version, 3000, calendariusmodels.EventHappeningTypeSingle)
 		game := createProviderHierarchyNode(t, facade, h.PrimaryUserID(), h.PrimarySpaceID(),
-			"hierarchy-game", "Final game", tournament.Event.ID, tournament.Event.Version, 4000)
+			"hierarchy-game", "Final game", tournament.Event.ID, tournament.Event.Version, 4000, calendariusmodels.EventHappeningTypeSingle)
 
 		rootAfter := mustGetProviderEvent(t, facade, h.PrimaryUserID(), h.PrimarySpaceID(), root.Event.ID)
 		yearAfter := mustGetProviderEvent(t, facade, h.PrimaryUserID(), h.PrimarySpaceID(), year.Event.ID)
@@ -288,7 +289,7 @@ func RunEventHappeningsProviderConformance(
 	t.Run("ConcurrentChildCreateCommitsOneReciprocalLinkageEdge", func(t *testing.T) {
 		h := newHarness(t)
 		parent := createProviderHierarchyNode(t, h.Facade(), h.PrimaryUserID(), h.PrimarySpaceID(),
-			"concurrent-child-parent", "Parent", "", 0, 1000)
+			"concurrent-child-parent", "Parent", "", 0, 1000, calendariusmodels.EventHappeningTypeSingle)
 		request := calendariusmodels.CreateEventHappeningRequest{
 			RequestID: "provider-concurrent-child", ParentHappeningID: parent.Event.ID,
 			ExpectedParentVersion: parent.Event.Version,
@@ -633,7 +634,8 @@ func RunEventHappeningsProviderConformance(
 		})
 		recurring := h.SeedHappening(t, StoredHappeningSeed{
 			SpaceID: h.PrimarySpaceID(), Type: "recurring", Kind: "event", Status: "active", Version: 1,
-			Spec: calendariusmodels.EventHappeningSpec{Title: "Recurring"}, CreatedBy: h.PrimaryUserID(), CreatedAt: base,
+			Recurrence: &calendariusmodels.EventHappeningRecurrence{Repeats: "yearly"},
+			Spec:       calendariusmodels.EventHappeningSpec{Title: "Recurring"}, CreatedBy: h.PrimaryUserID(), CreatedAt: base,
 		})
 		canceled := h.SeedHappening(t, StoredHappeningSeed{
 			SpaceID: h.PrimarySpaceID(), Type: "single", Kind: "event", Status: "canceled", Version: 1,
@@ -648,7 +650,7 @@ func RunEventHappeningsProviderConformance(
 		if err != nil {
 			t.Fatalf("list: %v", err)
 		}
-		want := []string{earlier, tieA, tieB, later, planned, plannedA, plannedB}
+		want := []string{earlier, tieA, tieB, later, recurring, planned, plannedA, plannedB}
 		if len(listed) != len(want) {
 			t.Fatalf("list = %+v, want IDs %v", listed, want)
 		}
@@ -661,7 +663,7 @@ func RunEventHappeningsProviderConformance(
 		if err != nil || !reflect.DeepEqual(listed, again) {
 			t.Fatalf("second list = %+v, %v; first = %+v", again, err, listed)
 		}
-		for _, id := range []string{nonEvent, recurring} {
+		for _, id := range []string{nonEvent} {
 			if _, err = h.Facade().GetEventHappening(context.Background(), h.PrimaryUserID(), h.PrimarySpaceID(), id); !errors.Is(err, facade4calendarius.ErrEventHappeningNotFound) {
 				t.Fatalf("GetEventHappening(%q) error = %v, want not found", id, err)
 			}
@@ -802,7 +804,7 @@ func RunEventHappeningsProviderConformance(
 				t.Fatalf("attach to parent %q error = %v, want %v", tt.parentID, err, tt.want)
 			}
 		}
-		root := createProviderHierarchyNode(t, h.Facade(), h.PrimaryUserID(), h.PrimarySpaceID(), "current-parent", "Current", "", 0, 1000)
+		root := createProviderHierarchyNode(t, h.Facade(), h.PrimaryUserID(), h.PrimarySpaceID(), "current-parent", "Current", "", 0, 1000, calendariusmodels.EventHappeningTypeSingle)
 		if _, err := h.Facade().CreateEventHappening(context.Background(), h.PrimaryUserID(), h.PrimarySpaceID(),
 			calendariusmodels.CreateEventHappeningRequest{
 				RequestID: "stale-parent", ParentHappeningID: root.Event.ID, ExpectedParentVersion: root.Event.Version + 1,
@@ -842,19 +844,23 @@ func createProviderHierarchyNode(
 	t *testing.T,
 	facade facade4calendarius.EventHappeningsFacade,
 	userID, spaceID, requestID, title, parentID string,
-	expectedParentVersion, priceValue int64,
+	expectedParentVersion, priceValue int64, eventType calendariusmodels.EventHappeningType,
 ) calendariusmodels.EventHappeningMutation {
 	t.Helper()
 	prices := conformancePrices()
 	prices[0].Amount.Value = decimalValue(priceValue)
-	created, err := facade.CreateEventHappening(context.Background(), userID, spaceID,
-		calendariusmodels.CreateEventHappeningRequest{
-			RequestID: requestID, ParentHappeningID: parentID, ExpectedParentVersion: expectedParentVersion,
-			Spec: calendariusmodels.EventHappeningSpec{Title: title},
-			WithHappeningPrices: calendariusmodels.WithHappeningPrices{
-				Prices: prices,
-			},
-		})
+	request := calendariusmodels.CreateEventHappeningRequest{
+		RequestID: requestID, ParentHappeningID: parentID, ExpectedParentVersion: expectedParentVersion,
+		Type: eventType,
+		Spec: calendariusmodels.EventHappeningSpec{Title: title},
+		WithHappeningPrices: calendariusmodels.WithHappeningPrices{
+			Prices: prices,
+		},
+	}
+	if eventType == calendariusmodels.EventHappeningTypeRecurring {
+		request.Recurrence = &calendariusmodels.EventHappeningRecurrence{Repeats: "yearly"}
+	}
+	created, err := facade.CreateEventHappening(context.Background(), userID, spaceID, request)
 	if err != nil {
 		t.Fatalf("create hierarchy node %q: %v", title, err)
 	}

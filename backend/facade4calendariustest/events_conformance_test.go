@@ -122,7 +122,7 @@ func (f *referenceEventFacade) CreateEventHappening(
 	}
 	if request.ParentHappeningID != "" {
 		parent, ok := f.events[spaceID][request.ParentHappeningID]
-		if !ok || parent.Type != calendariusmodels.EventHappeningTypeSingle || parent.Kind != calendariusmodels.EventHappeningKindEvent {
+		if !ok || !isEventHappeningType(parent.Type) || parent.Kind != calendariusmodels.EventHappeningKindEvent {
 			return calendariusmodels.EventHappeningMutation{}, facade4calendarius.ErrEventHappeningNotFound
 		}
 		projectedParent, err := f.projectEventLocked(spaceID, request.ParentHappeningID, parent)
@@ -138,7 +138,7 @@ func (f *referenceEventFacade) CreateEventHappening(
 	}
 	f.next++
 	id := strconv.Itoa(f.next)
-	event := eventFromSpec(id, userID, request.Spec, time.Unix(int64(f.next), 0).UTC())
+	event := eventFromSpec(id, userID, request.Spec, request.EffectiveType(), request.Recurrence, time.Unix(int64(f.next), 0).UTC())
 	event.Prices = cloneHappeningPrices(request.Prices)
 	if f.events[spaceID] == nil {
 		f.events[spaceID] = make(map[string]calendariusmodels.EventHappening)
@@ -187,7 +187,7 @@ func (f *referenceEventFacade) GetEventHappening(
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	event, ok := f.events[spaceID][happeningID]
-	if !ok || event.Type != calendariusmodels.EventHappeningTypeSingle || event.Kind != calendariusmodels.EventHappeningKindEvent {
+	if !ok || !isEventHappeningType(event.Type) || event.Kind != calendariusmodels.EventHappeningKindEvent {
 		return calendariusmodels.EventHappening{}, facade4calendarius.ErrEventHappeningNotFound
 	}
 	return f.projectEventLocked(spaceID, happeningID, event)
@@ -221,7 +221,7 @@ func (f *referenceEventFacade) UpdateEventHappening(
 		return calendariusmodels.EventHappeningMutation{}, fmt.Errorf("%w: %v", facade4calendarius.ErrInvalidEventHappening, err)
 	}
 	stored, ok := f.events[spaceID][happeningID]
-	if !ok || stored.Type != calendariusmodels.EventHappeningTypeSingle || stored.Kind != calendariusmodels.EventHappeningKindEvent {
+	if !ok || !isEventHappeningType(stored.Type) || stored.Kind != calendariusmodels.EventHappeningKindEvent {
 		return calendariusmodels.EventHappeningMutation{}, facade4calendarius.ErrEventHappeningNotFound
 	}
 	event, err := f.projectEventLocked(spaceID, happeningID, stored)
@@ -305,7 +305,7 @@ func (f *referenceEventFacade) ListEventHappenings(
 	events := make([]calendariusmodels.EventHappening, 0, len(f.events[spaceID]))
 	for id, stored := range f.events[spaceID] {
 		event := stored
-		if event.Type != calendariusmodels.EventHappeningTypeSingle || event.Kind != calendariusmodels.EventHappeningKindEvent ||
+		if !isEventHappeningType(event.Type) || event.Kind != calendariusmodels.EventHappeningKindEvent ||
 			event.Status != calendariusmodels.EventHappeningStatusActive {
 			continue
 		}
@@ -385,7 +385,7 @@ func (f *referenceEventFacade) validateReferenceHierarchyLocked(spaceID, happeni
 		}
 		seen[currentID] = struct{}{}
 		current, ok := f.events[spaceID][currentID]
-		if !ok || current.Type != calendariusmodels.EventHappeningTypeSingle || current.Kind != calendariusmodels.EventHappeningKindEvent {
+		if !ok || !isEventHappeningType(current.Type) || current.Kind != calendariusmodels.EventHappeningKindEvent {
 			return facade4calendarius.ErrEventHappeningHierarchyCorrupt
 		}
 		f.ensureReferenceLinkage(spaceID, currentID)
@@ -438,9 +438,18 @@ func eventHappeningLess(a, b calendariusmodels.EventHappening) bool {
 	return a.ID < b.ID
 }
 
-func eventFromSpec(id, createdBy string, spec calendariusmodels.EventHappeningSpec, createdAt time.Time) calendariusmodels.EventHappening {
+func isEventHappeningType(value calendariusmodels.EventHappeningType) bool {
+	return value == calendariusmodels.EventHappeningTypeSingle || value == calendariusmodels.EventHappeningTypeRecurring
+}
+
+func eventFromSpec(id, createdBy string, spec calendariusmodels.EventHappeningSpec, eventType calendariusmodels.EventHappeningType, recurrence *calendariusmodels.EventHappeningRecurrence, createdAt time.Time) calendariusmodels.EventHappening {
+	var recurrenceCopy *calendariusmodels.EventHappeningRecurrence
+	if recurrence != nil {
+		value := *recurrence
+		recurrenceCopy = &value
+	}
 	return calendariusmodels.EventHappening{
-		ID: id, Type: calendariusmodels.EventHappeningTypeSingle, Kind: calendariusmodels.EventHappeningKindEvent,
+		ID: id, Type: eventType, Recurrence: recurrenceCopy, Kind: calendariusmodels.EventHappeningKindEvent,
 		Version: 1, Title: spec.Title, Date: spec.Date, Time: spec.Time, TimeZone: spec.TimeZone, UTCOffset: spec.UTCOffset,
 		EndDate: spec.EndDate, EndTime: spec.EndTime, EndUTCOffset: spec.EndUTCOffset,
 		Location: spec.Location, Description: spec.Description, DurationMinutes: spec.DurationMinutes,

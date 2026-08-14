@@ -236,6 +236,28 @@ func TestCreateEventHappeningRequestHierarchyValidate(t *testing.T) {
 	}
 }
 
+func TestRecurringEventHappeningIsYearlyAndChangesCreateFingerprint(t *testing.T) {
+	series := CreateEventHappeningRequest{
+		RequestID: "annual-cup", Type: EventHappeningTypeRecurring,
+		Recurrence: &EventHappeningRecurrence{Repeats: "yearly"},
+		Spec:       EventHappeningSpec{Title: "Annual cup"},
+	}
+	if err := series.Validate(); err != nil {
+		t.Fatalf("valid yearly series: %v", err)
+	}
+	single := series
+	single.Type, single.Recurrence = EventHappeningTypeSingle, nil
+	seriesFingerprint, _ := series.Fingerprint()
+	singleFingerprint, _ := single.Fingerprint()
+	if seriesFingerprint == singleFingerprint {
+		t.Fatal("type/recurrence did not affect create fingerprint")
+	}
+	series.Spec.Date, series.Spec.Time, series.Spec.TimeZone, series.Spec.UTCOffset = "2026-01-01", "12:00", "Europe/Dublin", "+00:00"
+	if err := series.Validate(); err == nil {
+		t.Fatal("recurring series accepted a concrete single-event schedule")
+	}
+}
+
 func TestEventHappeningScopesValidateUTF8ByteBounds(t *testing.T) {
 	if err := (EventHappeningRequestScope{PrincipalID: "user1", SpaceID: "space1", RequestID: "request1"}).Validate(); err != nil {
 		t.Fatalf("valid request scope: %v", err)

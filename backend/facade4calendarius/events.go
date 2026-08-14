@@ -76,6 +76,10 @@ var (
 // stable HappeningPrice item IDs and use the existing generic Happening pricing
 // command surface for later price edits.
 //
+// A recurring yearly `kind=event` Happening is an annual Series/Cup root;
+// single nodes are its editions, Tournaments and games. Recurrence remains
+// owned by the existing RecurringHappeningsFacade, never this Event facade.
+//
 // ParentHappeningID is an immutable first-release attachment convenience. It
 // never creates a second hierarchy authority: providers derive projections
 // from and atomically write reciprocal standard Sneat Linkage parent/child
@@ -107,7 +111,7 @@ type EventHappeningsFacade interface {
 	) (calendariusmodels.EventHappeningMutation, error)
 
 	// ListEventHappenings returns a flat, non-recursive list containing only
-	// active type=single, kind=event Happenings. Each row carries its derived
+	// active type=single or type=recurring, kind=event Happenings. Each row carries its derived
 	// direct Linkage hierarchy projection. Scheduled events are ordered by
 	// resolved start instant, then ID. Planning events follow, ordered by
 	// CreatedAt then ID. The result is bounded by EventHappeningListMax and
