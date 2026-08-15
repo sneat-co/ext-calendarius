@@ -4,6 +4,7 @@
 
 - **ci:** publish checked contracts from protected main ([39f16d4](https://github.com/sneat-co/ext-calendarius/commit/39f16d4))
 - **ci:** bind releases to checked main ([3231943](https://github.com/sneat-co/ext-calendarius/commit/3231943))
+- **ci:** serialize contract releases ([758dc2b](https://github.com/sneat-co/ext-calendarius/commit/758dc2b))
 
 ### ❤️ Thank You
 
