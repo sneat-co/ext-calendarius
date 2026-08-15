@@ -20,6 +20,47 @@ jobs:
       working-directory: frontend
       ref: ${{ inputs.ref }}
       install-command: pnpm install --no-frozen-lockfile --ignore-scripts
-      build-command: pnpm exec nx build ext-calendarius-contract
-      publish-command: pnpm exec nx release --yes && git push --follow-tags
+      build-command: pnpm exec nx build ext-calendarius-contract --skip-nx-cache && node tools/verify-calendarius-contract-dist.mjs
+      publish-command: pnpm exec nx release publish --projects=ext-calendarius-contract
     secrets: inherit
+
+  tag:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref != '' && inputs.ref || github.sha }}
+      - name: Tag the exact published main revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./frontend/libs/extensions/calendarius/contract/package.json').version")"
+          tag="v${version}"
+          git fetch origin --tags --force
+          if git rev-parse --verify --quiet "refs/tags/${tag}" >/dev/null; then
+            git merge-base --is-ancestor "refs/tags/${tag}" HEAD || {
+              echo "${tag} exists outside the checked-out main history" >&2
+              exit 1
+            }
+            exit 0
+          fi
+          latest_tag="$(git tag --list 'v[0-9]*' --sort=-version:refname | head -n 1)"
+          node -e '
+            const current = process.argv[1].split(".").map(Number);
+            const latest = process.argv[2].slice(1).split(".").map(Number);
+            for (let i = 0; i < Math.max(current.length, latest.length); i += 1) {
+              const difference = (current[i] || 0) - (latest[i] || 0);
+              if (difference > 0) process.exit(0);
+              if (difference < 0) process.exit(1);
+            }
+            process.exit(1);
+          ' "${version}" "${latest_tag}" || {
+            echo "untagged version ${version} does not advance latest tag ${latest_tag}" >&2
+            exit 1
+          }
+          git config user.email "ci@sneat.co"
+          git config user.name "Sneat CI"
+          git tag --annotate "${tag}" --message "chore(release): publish ${version}" HEAD
+          git push origin "refs/tags/${tag}"

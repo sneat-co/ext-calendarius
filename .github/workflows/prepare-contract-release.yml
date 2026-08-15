@@ -1,0 +1,60 @@
+name: Prepare contract release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: SemVer change for the Calendarius contract
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: main
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - name: Install pnpm
+        run: npm install --global pnpm@11.18.0
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Prepare version and changelog
+        working-directory: frontend
+        run: pnpm exec nx release "${{ inputs.bump }}" --skip-publish
+      - name: Open the protected release pull request
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./frontend/libs/extensions/calendarius/contract/package.json').version")"
+          branch="release/ext-calendarius-contract-${version}-${GITHUB_RUN_ID}"
+          git config user.email "ci@sneat.co"
+          git config user.name "Sneat CI"
+          git switch --create "${branch}"
+          git add frontend/CHANGELOG.md frontend/libs/extensions/calendarius/contract/package.json
+          git diff --cached --quiet && {
+            echo "Release preparation produced no tracked changes" >&2
+            exit 1
+          }
+          git commit --message "chore(release): prepare ${version}"
+          git push --set-upstream origin "${branch}"
+          gh pr create \
+            --base main \
+            --head "${branch}" \
+            --title "chore(release): prepare ${version}" \
+            --body "Builds and versions the Calendarius contract on a protected release branch. Merging publishes the exact checked and merged package; the publish job does not mutate main."
