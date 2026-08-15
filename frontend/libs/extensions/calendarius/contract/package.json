@@ -1,6 +1,6 @@
 {
   "name": "@sneat/extension-calendarius-contract",
-  "version": "0.22.2",
+  "version": "0.24.1",
   "publishConfig": {
     "access": "public"
   },

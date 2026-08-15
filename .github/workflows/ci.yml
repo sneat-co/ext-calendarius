@@ -13,6 +13,11 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - name: Install pnpm
+        run: npm install --global pnpm@11.18.0
       - name: Reject implementation dependencies
         shell: bash
         run: |
@@ -36,3 +41,16 @@ jobs:
             echo "coverage ${coverage}% is below floor ${floor}%" >&2
             exit 1
           }
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Test and lint the TypeScript contract
+        working-directory: frontend
+        run: |
+          pnpm exec nx test ext-calendarius-contract
+          pnpm exec nx lint ext-calendarius-contract
+      - name: Build and verify the publishable contract
+        working-directory: frontend
+        run: |
+          pnpm exec nx build ext-calendarius-contract --skip-nx-cache
+          node tools/verify-calendarius-contract-dist.mjs

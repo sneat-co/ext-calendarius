@@ -47,13 +47,18 @@
     "projectsRelationship": "fixed",
     "releaseTagPattern": "v{version}",
     "git": {
-      "commit": true,
-      "tag": true,
-      "push": true
+      "commit": false,
+      "tag": false,
+      "push": false
     },
     "version": {
       "conventionalCommits": true,
-      "fallbackCurrentVersionResolver": "disk"
+      "fallbackCurrentVersionResolver": "disk",
+      "preVersionCommand": "pnpm exec nx build ext-calendarius-contract --skip-nx-cache",
+      "manifestRootsToUpdate": [
+        "{projectRoot}",
+        "dist/{projectRoot}"
+      ]
     },
     "changelog": {
       "workspaceChangelog": true,
@@ -61,7 +66,6 @@
     },
     "publish": {
       "executor": "@nx/js:release-publish",
-      "dependsOn": ["build"],
       "options": {
         "packageRoot": "dist/{projectRoot}",
         "access": "public"
