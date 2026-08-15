@@ -24,6 +24,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: main
+          token: ${{ secrets.SNEAT_CI_READWRITE_TOKEN }}
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
@@ -38,7 +39,9 @@ jobs:
       - name: Open the protected release pull request
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          # A normal GitHub token deliberately does not trigger the required
+          # pull-request checks after its own branch push. This PAT does.
+          GH_TOKEN: ${{ secrets.SNEAT_CI_READWRITE_TOKEN }}
         run: |
           set -euo pipefail
           version="$(node -p "require('./frontend/libs/extensions/calendarius/contract/package.json').version")"
