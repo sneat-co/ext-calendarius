@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: ext-calendarius-contract-release
+  cancel-in-progress: false
+
 jobs:
   publish:
     uses: sneat-co/cicd/.github/workflows/npm-publish.yml@main
