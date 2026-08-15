@@ -1,3 +1,13 @@
+## 0.24.1 (2026-08-15)
+
+### 🩹 Fixes
+
+- **ci:** publish checked contracts from protected main ([39f16d4](https://github.com/sneat-co/ext-calendarius/commit/39f16d4))
+
+### ❤️ Thank You
+
+- Alexander Trakhimenok
+
 ## 0.24.0 (2026-08-15)
 
 ### 🚀 Features
