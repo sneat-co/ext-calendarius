@@ -1,3 +1,31 @@
+## 0.24.1 (2026-08-15)
+
+### 🩹 Fixes
+
+- **ci:** publish checked contracts from protected main ([39f16d4](https://github.com/sneat-co/ext-calendarius/commit/39f16d4))
+- **ci:** bind releases to checked main ([3231943](https://github.com/sneat-co/ext-calendarius/commit/3231943))
+- **ci:** serialize contract releases ([758dc2b](https://github.com/sneat-co/ext-calendarius/commit/758dc2b))
+
+### ❤️ Thank You
+
+- Alexander Trakhimenok
+
+## 0.24.0 (2026-08-15)
+
+### 🚀 Features
+
+- version canonical event happening facade ([64cd310](https://github.com/sneat-co/ext-calendarius/commit/64cd310))
+- harden canonical event happening contract ([74db6de](https://github.com/sneat-co/ext-calendarius/commit/74db6de))
+- add recurring event series contract ([0b6fce1](https://github.com/sneat-co/ext-calendarius/commit/0b6fce1))
+
+### 🩹 Fixes
+
+- validate recurring event updates atomically ([819d08b](https://github.com/sneat-co/ext-calendarius/commit/819d08b))
+
+### ❤️ Thank You
+
+- Alexander Trakhimenok
+
 ## 0.23.2 (2026-08-06)
 
 ### 🩹 Fixes

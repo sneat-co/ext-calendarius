@@ -1,0 +1,4 @@
+github.com/crediterra/money v0.3.5 h1:H59COTzKEtRbl8Wlr2tNYWnBkoMOdOrEPVhGYez+VGU=
+github.com/crediterra/money v0.3.5/go.mod h1:0BT7dzPk4Wv+Wi8J6sxlFbCknYioLWVVQM4ciMJh6TI=
+github.com/strongo/decimal v0.1.2 h1:/LHdX9zJTUPpEM2cuQhnwCWNWLCUwG0BJMyOetpryY8=
+github.com/strongo/decimal v0.1.2/go.mod h1:uKFgetJbR2uT026stdbK54ELXTH9h0vZOPPOp7DAODk=

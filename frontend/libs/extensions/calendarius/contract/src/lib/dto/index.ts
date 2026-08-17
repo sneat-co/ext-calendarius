@@ -1,4 +1,5 @@
 export * from './happening';
+export * from './event-happening';
 export * from './dto-calendar-day';
 export * from './happening-types';
 export * from './calendarius';

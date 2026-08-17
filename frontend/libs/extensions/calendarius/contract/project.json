@@ -2,13 +2,6 @@
   "name": "ext-calendarius-contract",
   "$schema": "../../../../node_modules/nx/schemas/project-schema.json",
   "projectType": "library",
-  "release": {
-    "version": {
-      "manifestRootsToUpdate": ["dist/{projectRoot}"],
-      "currentVersionResolver": "git-tag",
-      "fallbackCurrentVersionResolver": "disk"
-    }
-  },
   "sourceRoot": "libs/extensions/calendarius/contract/src",
   "prefix": "sneat",
   "targets": {

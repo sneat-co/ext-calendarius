@@ -3,23 +3,66 @@ name: Publish contract
 on:
   push:
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      ref:
-        description: Git ref (branch or tag) to publish from (default - the default branch)
-        required: false
-        default: ""
+    paths:
+      - frontend/libs/extensions/calendarius/contract/package.json
 
 permissions:
   contents: write
+
+concurrency:
+  group: ext-calendarius-contract-release
+  cancel-in-progress: false
 
 jobs:
   publish:
     uses: sneat-co/cicd/.github/workflows/npm-publish.yml@main
     with:
       working-directory: frontend
-      ref: ${{ inputs.ref }}
+      ref: ${{ github.sha }}
       install-command: pnpm install --no-frozen-lockfile --ignore-scripts
-      build-command: pnpm exec nx build ext-calendarius-contract
-      publish-command: pnpm exec nx release --yes && git push --follow-tags
+      build-command: pnpm exec nx build ext-calendarius-contract --skip-nx-cache && node tools/verify-calendarius-contract-dist.mjs
+      publish-command: pnpm exec nx release publish --projects=ext-calendarius-contract
     secrets: inherit
+
+  tag:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - name: Tag the exact published main revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./frontend/libs/extensions/calendarius/contract/package.json').version")"
+          tag="v${version}"
+          git fetch origin --tags --force
+          if git rev-parse --verify --quiet "refs/tags/${tag}" >/dev/null; then
+            tag_commit="$(git rev-list --max-count=1 "refs/tags/${tag}")"
+            head_commit="$(git rev-parse HEAD)"
+            [ "${tag_commit}" = "${head_commit}" ] || {
+              echo "${tag} resolves to ${tag_commit}, not checked release ${head_commit}" >&2
+              exit 1
+            }
+            exit 0
+          fi
+          latest_tag="$(git tag --list 'v[0-9]*' --sort=-version:refname | head -n 1)"
+          node -e '
+            const current = process.argv[1].split(".").map(Number);
+            const latest = process.argv[2].slice(1).split(".").map(Number);
+            for (let i = 0; i < Math.max(current.length, latest.length); i += 1) {
+              const difference = (current[i] || 0) - (latest[i] || 0);
+              if (difference > 0) process.exit(0);
+              if (difference < 0) process.exit(1);
+            }
+            process.exit(1);
+          ' "${version}" "${latest_tag}" || {
+            echo "untagged version ${version} does not advance latest tag ${latest_tag}" >&2
+            exit 1
+          }
+          git config user.email "ci@sneat.co"
+          git config user.name "Sneat CI"
+          git tag --annotate "${tag}" --message "chore(release): publish ${version}" HEAD
+          git push origin "refs/tags/${tag}"
