@@ -1,0 +1,22 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    uses: sneat-co/cicd/.github/workflows/nx-ci.yml@11e88b45a49ef9626f6bfa8e54c317772e848a93
+    with:
+      working-directory: frontend
+      targets: lint test build
+      node-version: "22"
+      pnpm-version: "11.21.0"
+      coverage-command: pnpm exec nx test ext-calendarius-contract --coverage
+      coverage-path: libs/extensions/calendarius/contract/coverage
+      minimum-coverage: 90
+      coverage-artifact-name: ext-calendarius-contract-coverage

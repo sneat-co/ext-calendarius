@@ -28,6 +28,9 @@ export default defineConfig(() => ({
     environmentOptions: { jsdom: { url: 'http://localhost/' } },
     include: ['src/**/*.spec.ts'],
     setupFiles: ['src/test-setup.ts'],
+    coverage: {
+      reporter: ['text', 'html', 'lcov'],
+    },
     dangerouslyIgnoreUnhandledErrors: true,
     reporters: ['default'],
     server: {
