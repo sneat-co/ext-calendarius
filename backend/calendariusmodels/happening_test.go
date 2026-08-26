@@ -258,6 +258,63 @@ func TestRecurringEventHappeningIsYearlyAndChangesCreateFingerprint(t *testing.T
 	}
 }
 
+// TestEventHappeningRecurrenceValidateAcceptsGeneralRepeatsVocabulary mirrors
+// the TS RepeatPeriod contract (@sneat/extension-calendarius-contract@0.27.1)
+// assertTypeAndRecurrence semantics: every recurring cadence is accepted
+// except "once" and "UNKNOWN", which are rejected, along with any value
+// outside the TS-declared vocabulary.
+func TestEventHappeningRecurrenceValidateAcceptsGeneralRepeatsVocabulary(t *testing.T) {
+	for _, tt := range []struct {
+		repeats string
+		valid   bool
+	}{
+		{repeats: "weekly", valid: true},
+		{repeats: "fortnightly", valid: true},
+		{repeats: "monthly", valid: true},
+		{repeats: "yearly", valid: true},
+		{repeats: "once", valid: false},
+		{repeats: "UNKNOWN", valid: false},
+		{repeats: "", valid: false},
+		{repeats: "daily", valid: false}, // Go-only cadence, not in the active TS union
+		{repeats: "garbage", valid: false},
+		{repeats: "Yearly", valid: false}, // case-sensitive, must not fuzzy-match
+	} {
+		err := (EventHappeningRecurrence{Repeats: tt.repeats}).Validate()
+		if tt.valid && err != nil {
+			t.Errorf("repeats=%q: expected valid, got error: %v", tt.repeats, err)
+		}
+		if !tt.valid && err == nil {
+			t.Errorf("repeats=%q: expected error, got none", tt.repeats)
+		}
+	}
+}
+
+// TestCreateEventHappeningRequestAcceptsEveryRecurringRepeatsValue exercises
+// the vocabulary through the full CreateEventHappeningRequest.Validate path,
+// not just the leaf EventHappeningRecurrence.Validate call.
+func TestCreateEventHappeningRequestAcceptsEveryRecurringRepeatsValue(t *testing.T) {
+	for _, repeats := range []string{"weekly", "fortnightly", "monthly", "yearly"} {
+		request := CreateEventHappeningRequest{
+			RequestID: "series-" + repeats, Type: EventHappeningTypeRecurring,
+			Recurrence: &EventHappeningRecurrence{Repeats: repeats},
+			Spec:       EventHappeningSpec{Title: "Series"},
+		}
+		if err := request.Validate(); err != nil {
+			t.Errorf("repeats=%q: expected valid recurring request, got error: %v", repeats, err)
+		}
+	}
+	for _, repeats := range []string{"once", "UNKNOWN", "garbage"} {
+		request := CreateEventHappeningRequest{
+			RequestID: "series-" + repeats, Type: EventHappeningTypeRecurring,
+			Recurrence: &EventHappeningRecurrence{Repeats: repeats},
+			Spec:       EventHappeningSpec{Title: "Series"},
+		}
+		if err := request.Validate(); err == nil {
+			t.Errorf("repeats=%q: expected recurring request to be rejected", repeats)
+		}
+	}
+}
+
 func TestEventHappeningScopesValidateUTF8ByteBounds(t *testing.T) {
 	if err := (EventHappeningRequestScope{PrincipalID: "user1", SpaceID: "space1", RequestID: "request1"}).Validate(); err != nil {
 		t.Fatalf("valid request scope: %v", err)
