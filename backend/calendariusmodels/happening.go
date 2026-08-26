@@ -87,15 +87,37 @@ const (
 // cadence vocabulary. This Event facade does not expand occurrences or own a
 // second recurrence engine: the real provider maps this value to its normal
 // recurring Happening/slot representation and delegates expansion to
-// RecurringHappeningsFacade. The first public hierarchy use case is an annual
-// Series/Cup root, hence yearly is the only accepted cadence here.
+// RecurringHappeningsFacade. Repeats accepts the general Calendarius Happening
+// repeats vocabulary (mirroring the TS RepeatPeriod contract published as
+// @sneat/extension-calendarius-contract@0.27.1): every recurring cadence
+// except the non-recurring "once" value and the "UNKNOWN" placeholder
+// sentinel, which are rejected the same way the TS assertTypeAndRecurrence
+// validator rejects them.
 type EventHappeningRecurrence struct {
 	Repeats string
 }
 
+// eventHappeningRecurringRepeats is the TS-declared RepeatPeriod vocabulary
+// (sneat-libs libs/extensions/calendarius/contract/src/lib/dto/happening-types.ts,
+// published as @sneat/extension-calendarius-contract@0.27.1) minus the two
+// values "once" and "UNKNOWN" that assertTypeAndRecurrence rejects for a
+// recurring Happening. Kept as an explicit literal set rather than reused
+// from a shared Go RepeatPeriod type: this contract module defines none, and
+// Calendarius's own dbo4calendarius.RepeatPeriod vocabulary differs
+// structurally from the TS contract -- Go additionally defines "daily" (not
+// part of the active TS union, which comments it out), while the TS union
+// additionally declares "fortnightly" and "UNKNOWN" (neither has a Go
+// constant today). This set implements the TS-declared vocabulary exactly.
+var eventHappeningRecurringRepeats = map[string]bool{
+	"weekly":      true,
+	"fortnightly": true,
+	"monthly":     true,
+	"yearly":      true,
+}
+
 func (v EventHappeningRecurrence) Validate() error {
-	if v.Repeats != "yearly" {
-		return fmt.Errorf("recurrence.repeats must be Calendarius yearly")
+	if !eventHappeningRecurringRepeats[v.Repeats] {
+		return fmt.Errorf("recurrence.repeats must be a recurring Calendarius repeats value (weekly, fortnightly, monthly, or yearly), got %q", v.Repeats)
 	}
 	return nil
 }
