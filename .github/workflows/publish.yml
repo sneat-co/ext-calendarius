@@ -1,10 +1,12 @@
 name: Publish contract
 
+# DISARMED 2026-08-26: sneat-co/sneat-libs is the sole interim publisher of
+# @sneat/extension-calendarius-contract until Phase 4 of the ext-contracts-monorepo
+# migration (sneat-libs/spec/features/ext-contracts-monorepo). Push-triggered
+# publishing from this repo collided with sneat-libs's release train on npm
+# (four overlapping versions; incident 2026-08-15). Manual dispatch only.
 on:
-  push:
-    branches: [main]
-    paths:
-      - frontend/libs/extensions/calendarius/contract/package.json
+  workflow_dispatch:
 
 permissions:
   contents: write
